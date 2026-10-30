@@ -57,6 +57,12 @@ public class PlaybackActivity extends LeanbackActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // Car build: typing in the search box of the side panels goes straight to the box
+        android.view.View focus = getCurrentFocus();
+        if (focus instanceof android.widget.EditText && event.getKeyCode() != KeyEvent.KEYCODE_BACK
+                && focus.dispatchKeyEvent(event)) {
+            return true;
+        }
         if (mPlaybackFragment != null) {
             mPlaybackFragment.onDispatchKeyEvent(event);
         }

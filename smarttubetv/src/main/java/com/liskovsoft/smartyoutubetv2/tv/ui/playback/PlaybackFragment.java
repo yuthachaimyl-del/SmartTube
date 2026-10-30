@@ -269,7 +269,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private long mLastTouchMs = System.currentTimeMillis();
 
     private void syncFloatingButtons() {
-        boolean show = System.currentTimeMillis() - mLastTouchMs < FLOATING_BUTTONS_MS;
+        boolean show = System.currentTimeMillis() - mLastTouchMs < FLOATING_BUTTONS_MS
+                && (mSidePanel == null || !mSidePanel.isOpen());   // the panel has its own ✕ there
         if (getActivity() != null) {
             View back = getActivity().getWindow().getDecorView().findViewWithTag("car_back_button");
             if (back != null) {
