@@ -355,6 +355,15 @@ public final class DualScreen {
 
     private final class VideoPresentation extends Presentation {
         private AspectRatioFrameLayout mFrame;
+        private ScreenTwoControls mControls;
+
+        @Override
+        protected void onStop() {
+            if (mControls != null) {
+                mControls.release();
+            }
+            super.onStop();
+        }
 
         VideoPresentation(Context outer, Display display) {
             super(outer, display);
@@ -373,6 +382,8 @@ public final class DualScreen {
             root.addView(mFrame, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
             setContentView(root);
+            mControls = new ScreenTwoControls(getContext(), mActivity, root, () -> mPlayer);
+            mControls.showFor(); // show once so it's clear the second screen can be touched
             if (mPlayer != null) {
                 Format f = mPlayer.getVideoFormat();
                 if (f != null && f.height > 0) {
