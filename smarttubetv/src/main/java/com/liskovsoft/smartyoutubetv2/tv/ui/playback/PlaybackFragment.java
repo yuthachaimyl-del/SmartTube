@@ -207,6 +207,25 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls mCenterControls;
 
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel mSidePanel;
+    private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel mLeftMenu;
+    private io.reactivex.disposables.Disposable mLeftMenuLoad;
+    private int mLeftMenuIndex = -1;
+
+    private void loadLeftMenu(int index) {
+        if (mLeftMenu == null) {
+            return;
+        }
+        if (mLeftMenuLoad != null) {
+            mLeftMenuLoad.dispose();
+        }
+        mLeftMenuIndex = index;
+        mLeftMenu.setItems(null, "กำลังโหลด…");
+        mLeftMenuLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.load(index, (videos, error) -> {
+            if (mLeftMenu != null && mLeftMenuIndex == index) {
+                mLeftMenu.setItems(videos, error != null ? error : "ไม่มีวิดีโอ");
+            }
+        });
+    }
 
     private java.util.List<Video> collectSuggestions() {
         java.util.List<Video> out = new java.util.ArrayList<>();
@@ -235,7 +254,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
                         @Override public java.util.List<Video> getSuggestions() { return collectSuggestions(); }
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
-                        @Override public void setVideoFraction(float fraction) { PlaybackFragment.this.setVideoFraction(fraction); }
+                        @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
+                    });
+        }
+        if (mLeftMenu == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
+            mLeftMenu = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel(
+                    getActivity(), (android.view.ViewGroup) getView(),
+                    new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
+                        @Override public java.util.List<Video> getSuggestions() { return null; }
+                        @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
+                        @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
+                    }, true, "SmartTube",
+                    new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Tabs() {
+                        @Override public String[] titles() { return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES; }
+                        @Override public void onTabSelected(int index, com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel panel) { loadLeftMenu(index); }
                     });
         }
         if (mCenterControls == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
@@ -347,7 +379,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (mSidePanel != null && getView() != null) {
             int w = getView().getWidth();
             if (event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone && !mSidePanel.isOpen()
-                    && mTapDownX > w * 0.85f) {
+                    && (mLeftMenu == null || !mLeftMenu.isOpen()) && mTapDownX > w * 0.85f) {
                 float dx = mTapDownX - event.getRawX(), dy = Math.abs(event.getRawY() - mTapDownY);
                 if (dx > w * 0.2f && dx > dy * 2) {
                     mEdgeSwipeDone = true;
@@ -355,6 +387,25 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     mSidePanel.open();
                     return;
                 }
+            }
+            if (mLeftMenu != null && event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone
+                    && !mLeftMenu.isOpen() && !mSidePanel.isOpen() && mTapDownX < w * 0.15f) {
+                float dx = event.getRawX() - mTapDownX, dy = Math.abs(event.getRawY() - mTapDownY);
+                if (dx > w * 0.2f && dx > dy * 2) {
+                    mEdgeSwipeDone = true;
+                    hideControlsOverlay(true);
+                    mLeftMenu.open();
+                    if (mLeftMenuIndex < 0) {
+                        loadLeftMenu(0);
+                    }
+                    return;
+                }
+            }
+            if (mLeftMenu != null && event.getActionMasked() == MotionEvent.ACTION_UP && mLeftMenu.isOpen() && !mEdgeSwipeDone
+                    && !isOverlayShown() && !mLeftMenu.contains(event.getRawX(), event.getRawY())
+                    && Math.abs(event.getRawX() - mTapDownX) < 30 && Math.abs(event.getRawY() - mTapDownY) < 30) {
+                mLeftMenu.close();
+                mEdgeSwipeDone = true;
             }
             if (event.getActionMasked() == MotionEvent.ACTION_UP && mSidePanel.isOpen() && !mEdgeSwipeDone
                     && !isOverlayShown() && !mSidePanel.contains(event.getRawX(), event.getRawY())

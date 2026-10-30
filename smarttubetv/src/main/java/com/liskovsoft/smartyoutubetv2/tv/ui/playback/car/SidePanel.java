@@ -33,7 +33,13 @@ public final class SidePanel {
     public interface Host {
         List<Video> getSuggestions();
         void onVideoClicked(Video video);
-        void setVideoFraction(float fraction); // 1 = full width
+        void setVideoFraction(float fraction, boolean videoOnRight); // 1 = full width
+    }
+
+    /** Left menu: a row of section tabs above the list. */
+    public interface Tabs {
+        String[] titles();
+        void onTabSelected(int index, SidePanel panel);
     }
 
     public static final float VIDEO_FRACTION = 0.62f;
@@ -43,10 +49,18 @@ public final class SidePanel {
     private final FrameLayout mPanel;
     private final Adapter mAdapter = new Adapter();
     private boolean mOpen;
+    private final boolean mLeft;
+    private final TextView mEmpty;
+    private final List<TextView> mTabViews = new ArrayList<>();
 
     public SidePanel(Activity activity, ViewGroup root, Host host) {
+        this(activity, root, host, false, "วิดีโอถัดไป", null);
+    }
+
+    public SidePanel(Activity activity, ViewGroup root, Host host, boolean left, String titleText, Tabs tabs) {
         mActivity = activity;
         mHost = host;
+        mLeft = left;
 
         mPanel = new FrameLayout(activity);
         mPanel.setBackgroundColor(0xF2101010);
@@ -60,9 +74,9 @@ public final class SidePanel {
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(8), dp(96), dp(4)); // clear of the on-screen Back button
+        header.setPadding(dp(16), dp(8), left ? dp(8) : dp(96), dp(4)); // clear of the on-screen Back button
         TextView title = new TextView(activity);
-        title.setText("วิดีโอถัดไป");
+        title.setText(titleText);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(20));
@@ -76,6 +90,35 @@ public final class SidePanel {
         header.addView(close, new LinearLayout.LayoutParams(dp(52), dp(52)));
         column.addView(header);
 
+        if (tabs != null) {
+            android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(activity);
+            scroll.setHorizontalScrollBarEnabled(false);
+            LinearLayout strip = new LinearLayout(activity);
+            strip.setOrientation(LinearLayout.HORIZONTAL);
+            strip.setPadding(dp(10), 0, dp(10), dp(6));
+            String[] names = tabs.titles();
+            for (int i = 0; i < names.length; i++) {
+                final int index = i;
+                TextView chip = new TextView(activity);
+                chip.setText(names[i]);
+                chip.setTextColor(Color.WHITE);
+                chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
+                chip.setGravity(Gravity.CENTER);
+                chip.setPadding(dp(16), 0, dp(16), 0);
+                chip.setOnClickListener(v -> {
+                    selectTab(index);
+                    tabs.onTabSelected(index, this);
+                });
+                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+                clp.rightMargin = dp(8);
+                strip.addView(chip, clp);
+                mTabViews.add(chip);
+            }
+            scroll.addView(strip);
+            column.addView(scroll);
+            selectTab(0);
+        }
+
         RecyclerView list = new RecyclerView(activity);
         list.setLayoutManager(new LinearLayoutManager(activity));
         list.setAdapter(mAdapter);
@@ -83,6 +126,13 @@ public final class SidePanel {
         column.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         mPanel.addView(column);
+        mEmpty = new TextView(activity);
+        mEmpty.setTextColor(0xFFAAAAAA);
+        mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
+        mEmpty.setGravity(Gravity.CENTER);
+        mEmpty.setVisibility(View.GONE);
+        mPanel.addView(mEmpty, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
         mPanel.setOnTouchListener(new SwipeToClose());
         list.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
             private final SwipeToClose mSwipe = new SwipeToClose();
@@ -92,7 +142,8 @@ public final class SidePanel {
             }
         });
 
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT,
+                left ? Gravity.START : Gravity.END);
         root.addView(mPanel, lp);
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int w = Math.round((r - l) * (1 - VIDEO_FRACTION));
@@ -113,15 +164,16 @@ public final class SidePanel {
 
     public void open() {
         List<Video> items = mHost.getSuggestions();
-        if (items == null || items.isEmpty()) {
+        if (!mLeft && (items == null || items.isEmpty())) {
             android.widget.Toast.makeText(mActivity, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
         mAdapter.set(items);
         mOpen = true;
-        mHost.setVideoFraction(VIDEO_FRACTION);
+        mHost.setVideoFraction(VIDEO_FRACTION, mLeft);
         mPanel.setVisibility(View.VISIBLE);
-        mPanel.setTranslationX(mPanel.getWidth() > 0 ? mPanel.getWidth() : dp(400));
+        float off = mPanel.getWidth() > 0 ? mPanel.getWidth() : dp(400);
+        mPanel.setTranslationX(mLeft ? -off : off);
         mPanel.animate().translationX(0).setDuration(200).start();
     }
 
@@ -130,8 +182,8 @@ public final class SidePanel {
             return;
         }
         mOpen = false;
-        mHost.setVideoFraction(1f);
-        mPanel.animate().translationX(mPanel.getWidth()).setDuration(180)
+        mHost.setVideoFraction(1f, false);
+        mPanel.animate().translationX(mLeft ? -mPanel.getWidth() : mPanel.getWidth()).setDuration(180)
                 .withEndAction(() -> mPanel.setVisibility(View.GONE)).start();
     }
 
@@ -142,6 +194,24 @@ public final class SidePanel {
         }
     }
 
+    /** Show this list (left menu after a section loaded); null = loading. */
+    public void setItems(List<Video> items, String emptyText) {
+        mAdapter.set(items);
+        boolean empty = items == null || items.isEmpty();
+        mEmpty.setText(emptyText);
+        mEmpty.setVisibility(empty && emptyText != null ? View.VISIBLE : View.GONE);
+    }
+
+    private void selectTab(int index) {
+        for (int i = 0; i < mTabViews.size(); i++) {
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(22));
+            bg.setColor(i == index ? 0xFFFFFFFF : 0x33FFFFFF);
+            mTabViews.get(i).setBackground(bg);
+            mTabViews.get(i).setTextColor(i == index ? Color.BLACK : Color.WHITE);
+        }
+    }
+
     /** True when (x, y) in screen pixels falls on the panel. */
     public boolean contains(float rawX, float rawY) {
         if (!mOpen) {
@@ -149,7 +219,7 @@ public final class SidePanel {
         }
         int[] loc = new int[2];
         mPanel.getLocationOnScreen(loc);
-        return rawX >= loc[0] && rawY >= loc[1] && rawY <= loc[1] + mPanel.getHeight();
+        return rawX >= loc[0] && rawX <= loc[0] + mPanel.getWidth() && rawY >= loc[1] && rawY <= loc[1] + mPanel.getHeight();
     }
 
     private final class SwipeToClose implements View.OnTouchListener {
@@ -162,7 +232,7 @@ public final class SidePanel {
                 mDownY = e.getRawY();
             } else if (e.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
                 float dx = e.getRawX() - mDownX, dy = Math.abs(e.getRawY() - mDownY);
-                if (dx > dp(90) && dx > dy * 2) {
+                if ((mLeft ? -dx : dx) > dp(90) && Math.abs(dx) > dy * 2) {
                     close();
                     return true;
                 }
