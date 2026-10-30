@@ -219,7 +219,17 @@ public final class LeanbackPlayerAdapter extends PlayerAdapter implements Runnab
 
   // Internal methods.
 
+  /**
+   * Car build: while set, video always goes to this surface (the second screen),
+   * whatever happens to the player's own surface on the main screen.
+   */
+  @Nullable public static volatile Surface sOverrideSurface;
+
   /* package */ void setVideoSurface(@Nullable Surface surface) {
+    Surface override = sOverrideSurface;
+    if (override != null && override.isValid()) {
+      surface = override;
+    }
     hasSurface = surface != null;
     Player.VideoComponent videoComponent = player.getVideoComponent();
     if (videoComponent != null) {

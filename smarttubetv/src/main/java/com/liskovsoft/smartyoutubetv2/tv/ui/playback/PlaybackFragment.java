@@ -201,6 +201,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     /**
      * Not called when using PIP or Dialogs on API >= 24
      */
+    // Car build: video on the second screen, controls + suggestions on the main screen
+    private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen mDualScreen;
+
+    private void ensureDualScreen() {
+        if (mDualScreen == null && getView() instanceof android.view.ViewGroup && getActivity() != null
+                && getSurfaceView() != null) {
+            mDualScreen = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen(
+                    getActivity(), (android.view.ViewGroup) getView(), getSurfaceView());
+        }
+    }
+
     @Override
     public void onStart() {
         super.onStart();
@@ -212,6 +223,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         if (Util.SDK_INT > 23) {
             initializePlayer();
         }
+
+        ensureDualScreen();
+        if (mDualScreen != null) {
+            mDualScreen.setPlayer(mPlayer);
+            mDualScreen.onStart();
+        }
     }
 
     /**
@@ -220,6 +237,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void onStop() {
         super.onStop();
+
+        if (mDualScreen != null) {
+            mDualScreen.onStop();
+        }
 
         if (Util.SDK_INT > 23) {
             maybeReleasePlayer();
@@ -431,6 +452,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     private void releasePlayer() {
+        if (mDualScreen != null) {
+            mDualScreen.setPlayer(null);
+        }
         if (mPlayer != null) {
             Log.d(TAG, "releasePlayer: Start releasing player engine...");
             mPlaybackPresenter.onEngineReleased();
@@ -540,6 +564,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
 
         mExoPlayerController.setPlayer(mPlayer);
+
+        if (mDualScreen != null) {
+            mDualScreen.setPlayer(mPlayer);
+        }
     }
 
     private void createPlayerGlue() {
