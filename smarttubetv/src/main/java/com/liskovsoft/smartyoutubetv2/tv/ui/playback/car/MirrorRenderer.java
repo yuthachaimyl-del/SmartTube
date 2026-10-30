@@ -10,19 +10,29 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.util.Log;
 import android.view.Surface;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Car build: one video decoder, picture on two screens. The player renders into {@link #getInputSurface()},
  * every frame is then drawn (GPU copy) onto each output surface: the main screen and the second screen.
  */
 public final class MirrorRenderer {
+    private static final String TAG = "CarMirror";
+
+    /** Called on the main thread once OpenGL is up (ok) or couldn't start (not ok). */
+    public interface ReadyListener {
+        void onReady(MirrorRenderer renderer, boolean ok);
+    }
+
     private static final String VS =
             "attribute vec4 aPos; attribute vec4 aTex; uniform mat4 uTex; varying vec2 vTex;" +
             "void main(){ gl_Position = aPos; vTex = (uTex * aTex).xy; }";
@@ -40,39 +50,41 @@ public final class MirrorRenderer {
     private EGLConfig mConfig;
     private EGLSurface mPbuffer = EGL14.EGL_NO_SURFACE;
     private SurfaceTexture mTexture;
-    private Surface mInput;
+    private volatile Surface mInput;
     private int mProgram, mTexId, aPos, aTex, uTex;
     private final float[] mMatrix = new float[16];
     private FloatBuffer mQuad;
-    private final Map<Surface, EGLSurface> mTargets = new LinkedHashMap<>();
+    private final Map<Surface, EGLSurface> mTargets = new ConcurrentHashMap<>();
     private volatile boolean mReleased;
+    private long mFrames;
 
-    public MirrorRenderer() {
+    /**
+     * OpenGL starts on its own thread (it can take seconds on a busy head unit), the main thread never waits for it.
+     */
+    public MirrorRenderer(ReadyListener listener) {
         mThread.start();
         mHandler = new Handler(mThread.getLooper());
-        final Object lock = new Object();
-        final boolean[] done = {false};
+        final Handler main = new Handler(Looper.getMainLooper());
         mHandler.post(() -> {
+            long start = SystemClock.uptimeMillis();
+            boolean ok;
             try {
                 init();
+                ok = mInput != null;
             } catch (Throwable t) {
+                Log.e(TAG, "OpenGL init failed", t);
                 mInput = null;
+                ok = false;
             }
-            synchronized (lock) {
-                done[0] = true;
-                lock.notifyAll();
-            }
+            Log.i(TAG, "init " + (ok ? "ok" : "FAILED") + " in " + (SystemClock.uptimeMillis() - start) + " ms");
+            final boolean fok = ok;
+            main.post(() -> listener.onReady(this, fok));
         });
-        synchronized (lock) {
-            while (!done[0]) {
-                try {
-                    lock.wait(2000);
-                    break;
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        }
+    }
+
+    /** True when this surface is already being drawn by the mirror. */
+    public boolean hasTarget(Surface s) {
+        return s != null && mTargets.containsKey(s);
     }
 
     /** Null when OpenGL couldn't start (then fall back to a single screen). */
@@ -80,30 +92,30 @@ public final class MirrorRenderer {
         return mInput;
     }
 
+    /**
+     * One attempt (the decoder may still hold this surface for a moment: then it fails and the caller tries again).
+     */
     public void addTarget(Surface s) {
-        addTarget(s, 0);
-    }
-
-    private void addTarget(Surface s, int attempt) {
-        if (s == null || !s.isValid()) {
+        if (s == null || !s.isValid() || mReleased) {
             return;
         }
-        mHandler.postDelayed(() -> {
+        mHandler.post(() -> {
             if (mReleased || mTargets.containsKey(s) || !s.isValid()) {
                 return;
             }
             EGLSurface es = EGL14.EGL_NO_SURFACE;
             try {
                 es = EGL14.eglCreateWindowSurface(mDisplay, mConfig, s, new int[]{EGL14.EGL_NONE}, 0);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                Log.w(TAG, "eglCreateWindowSurface threw", t);
             }
             if (es != null && es != EGL14.EGL_NO_SURFACE) {
                 mTargets.put(s, es);
-            } else if (attempt < 15) {
-                // the decoder may still be attached to this surface for a moment
-                addTarget(s, attempt + 1);
+                Log.i(TAG, "target added, targets=" + mTargets.size());
+            } else {
+                Log.w(TAG, "target not ready yet, egl error 0x" + Integer.toHexString(EGL14.eglGetError()));
             }
-        }, attempt == 0 ? 0 : 200);
+        });
     }
 
     public void removeTarget(Surface s) {
@@ -223,6 +235,9 @@ public final class MirrorRenderer {
             EGL14.eglMakeCurrent(mDisplay, mPbuffer, mPbuffer, mContext);
             mTexture.updateTexImage();
             mTexture.getTransformMatrix(mMatrix);
+            if (++mFrames % 600 == 1) {
+                Log.i(TAG, "frame " + mFrames + ", targets=" + mTargets.size());
+            }
             for (Map.Entry<Surface, EGLSurface> e : mTargets.entrySet()) {
                 EGLSurface es = e.getValue();
                 if (!e.getKey().isValid() || !EGL14.eglMakeCurrent(mDisplay, es, es, mContext)) {
@@ -247,7 +262,8 @@ public final class MirrorRenderer {
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
                 EGL14.eglSwapBuffers(mDisplay, es);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Log.w(TAG, "draw failed", t);
         }
     }
 
