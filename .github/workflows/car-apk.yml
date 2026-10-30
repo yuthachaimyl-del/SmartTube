@@ -19,6 +19,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
+      - name: Fixed signing key from repo secret (so each new APK installs over the previous one)
+        env:
+          CAR_DEBUG_KEYSTORE: ${{ secrets.CAR_DEBUG_KEYSTORE }}
+        run: |
+          if [ -n "$CAR_DEBUG_KEYSTORE" ]; then
+            mkdir -p ~/.android && echo "$CAR_DEBUG_KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::CAR_DEBUG_KEYSTORE secret not set - APK gets a random key"
+          fi
       - name: Build
         run: chmod +x gradlew && ./gradlew assembleStstableDebug
       - uses: actions/upload-artifact@v4
