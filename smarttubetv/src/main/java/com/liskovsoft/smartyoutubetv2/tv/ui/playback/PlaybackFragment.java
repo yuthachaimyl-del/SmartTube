@@ -206,7 +206,38 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls mCenterControls;
 
+    private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel mSidePanel;
+
+    private java.util.List<Video> collectSuggestions() {
+        java.util.List<Video> out = new java.util.ArrayList<>();
+        if (mRowsAdapter == null) {
+            return out;
+        }
+        for (int i = 0; i < mRowsAdapter.size(); i++) {
+            Object row = mRowsAdapter.get(i);
+            if (row instanceof ListRow && ((ListRow) row).getAdapter() != null) {
+                androidx.leanback.widget.ObjectAdapter a = ((ListRow) row).getAdapter();
+                for (int j = 0; j < a.size(); j++) {
+                    Object item = a.get(j);
+                    if (item instanceof Video) {
+                        out.add((Video) item);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     private void ensureCenterControls() {
+        if (mSidePanel == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
+            mSidePanel = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel(
+                    getActivity(), (android.view.ViewGroup) getView(),
+                    new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
+                        @Override public java.util.List<Video> getSuggestions() { return collectSuggestions(); }
+                        @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
+                        @Override public void setVideoFraction(float fraction) { PlaybackFragment.this.setVideoFraction(fraction); }
+                    });
+        }
         if (mCenterControls == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
             mCenterControls = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls(
                     getActivity(), (android.view.ViewGroup) getView(),
@@ -309,8 +340,32 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private long mTapDownMs;
     private boolean mTapDownOverlayShown;
 
+    private boolean mEdgeSwipeDone;
+
     private void handleCarTapToHide(MotionEvent event) {
+        // swipe from the right edge towards the middle -> list of next videos on the right
+        if (mSidePanel != null && getView() != null) {
+            int w = getView().getWidth();
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone && !mSidePanel.isOpen()
+                    && mTapDownX > w * 0.85f) {
+                float dx = mTapDownX - event.getRawX(), dy = Math.abs(event.getRawY() - mTapDownY);
+                if (dx > w * 0.2f && dx > dy * 2) {
+                    mEdgeSwipeDone = true;
+                    hideControlsOverlay(true);
+                    mSidePanel.open();
+                    return;
+                }
+            }
+            if (event.getActionMasked() == MotionEvent.ACTION_UP && mSidePanel.isOpen() && !mEdgeSwipeDone
+                    && !isOverlayShown() && !mSidePanel.contains(event.getRawX(), event.getRawY())
+                    && Math.abs(event.getRawX() - mTapDownX) < 30 && Math.abs(event.getRawY() - mTapDownY) < 30) {
+                // a tap on the video while the list is open: back to full-screen video
+                mSidePanel.close();
+                mEdgeSwipeDone = true; // swallow the overlay toggle for this tap
+            }
+        }
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            mEdgeSwipeDone = false;
             mTapDownX = event.getRawX();
             mTapDownY = event.getRawY();
             mTapDownMs = System.currentTimeMillis();

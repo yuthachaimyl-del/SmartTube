@@ -276,6 +276,22 @@ public class SurfacePlaybackFragment extends PlaybackSupportFragment {
         return mSideMode;
     }
 
+    /** Car build: video keeps only the left part of the screen (swipe-in list on the right). 1 = full width. */
+    public void setVideoFraction(float fraction) {
+        View root = getView();
+        if (root == null || mVideoSurfaceRoot == null) {
+            return;
+        }
+        boolean full = fraction >= 1f;
+        int videoWidth = Math.round(root.getWidth() * fraction);
+        FrameLayout.LayoutParams videoParams = (FrameLayout.LayoutParams) mVideoSurfaceRoot.getLayoutParams();
+        videoParams.width = full ? ViewGroup.LayoutParams.MATCH_PARENT : videoWidth;
+        videoParams.gravity = full ? Gravity.CENTER : (Gravity.START | Gravity.CENTER_VERTICAL);
+        mVideoSurfaceRoot.setLayoutParams(videoParams);
+        scaleSubtitles(full ? ViewGroup.LayoutParams.MATCH_PARENT : videoWidth,
+                full ? mSubtitlesPadding : mSubtitlesPadding / 3, full ? Gravity.CENTER : Gravity.START);
+    }
+
     private float calculateAspectRatio() {
         return (mAspectRatio == 0 ? mVideoAspectRatio : mAspectRatio) * mPixelRatio;
     }
