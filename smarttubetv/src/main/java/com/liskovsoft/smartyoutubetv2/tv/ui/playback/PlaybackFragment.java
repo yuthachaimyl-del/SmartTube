@@ -204,6 +204,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     // Car build: video on the second screen, controls + suggestions on the main screen
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen mDualScreen;
 
+    private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls mCenterControls;
+
+    private void ensureCenterControls() {
+        if (mCenterControls == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
+            mCenterControls = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls(
+                    getActivity(), (android.view.ViewGroup) getView(),
+                    new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls.Host() {
+                        @Override public boolean isControlsShown() { return isOverlayShown(); }
+                        @Override public SimpleExoPlayer getPlayer() { return mPlayer; }
+                        @Override public void onUserAction() { showOverlay(true); }
+                    });
+        }
+    }
+
     private void ensureDualScreen() {
         if (mDualScreen == null && getView() instanceof android.view.ViewGroup && getActivity() != null
                 && getSurfaceView() != null) {
@@ -229,6 +243,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDualScreen.setPlayer(mPlayer);
             mDualScreen.onStart();
         }
+        ensureCenterControls();
+        if (mCenterControls != null) {
+            mCenterControls.start();
+        }
     }
 
     /**
@@ -240,6 +258,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (mDualScreen != null) {
             mDualScreen.onStop();
+        }
+        if (mCenterControls != null) {
+            mCenterControls.stop();
         }
 
         if (Util.SDK_INT > 23) {
