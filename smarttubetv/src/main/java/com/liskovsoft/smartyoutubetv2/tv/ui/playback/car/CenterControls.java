@@ -18,7 +18,7 @@ import com.google.android.exoplayer2.SimpleExoPlayer;
 
 /**
  * Car build: YouTube-app style buttons in the middle of the video while the controls are shown:
- * back 10 s, play/pause, forward 10 s, next video. Big enough for a finger.
+ * previous video, back 10 s, play/pause, forward 10 s, next video. Big enough for a finger.
  */
 public final class CenterControls {
     public interface Host {
@@ -54,6 +54,7 @@ public final class CenterControls {
         mBar.setOrientation(LinearLayout.HORIZONTAL);
         mBar.setGravity(Gravity.CENTER);
         mBar.setVisibility(View.GONE);
+        mBar.addView(button("|◀◀", 76, v -> sendKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)));
         mBar.addView(button("↺ 10", 76, v -> seekBy(-SEEK_MS)));
         mPlayPause = button("❚❚", 96, v -> playPause());
         mBar.addView(mPlayPause);
