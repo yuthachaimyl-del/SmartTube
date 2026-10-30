@@ -80,6 +80,14 @@
         <!-- This activity's name used inside atv channels -->
         <!-- More info: com.liskovsoft.leanbackassistant.utils.AppUtil -->
         <activity
+            android:name="com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.ScreenTwoActivity"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:taskAffinity="org.smarttube.car.screen2"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="true"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode" />
+        <activity
             android:name="com.liskovsoft.smartyoutubetv2.tv.ui.main.SplashActivity"
             android:exported="true"
             android:launchMode="singleTop"

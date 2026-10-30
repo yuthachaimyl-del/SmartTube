@@ -51,7 +51,11 @@ public final class DualScreen {
     private SimpleExoPlayer mPlayer;
     private TextView mButton;
     private TextView mPlaceholder;
-    private VideoPresentation mPresentation;
+    private VideoPresentation mPresentation;     // fallback: a window on the second screen
+    private ScreenTwoActivity mScreenActivity;   // preferred: an app screen there (can hide that screen's toolbar)
+    private ScreenTwoUi mUi;                     // what's shown on the second screen
+    private boolean mShowing;                    // second screen in use (or opening)
+    static DualScreen sCurrent;
     private boolean mStarted;
 
     private final DisplayManager.DisplayListener mDisplayListener = new DisplayManager.DisplayListener() {
@@ -63,8 +67,8 @@ public final class DualScreen {
     private final VideoListener mVideoListener = new VideoListener() {
         @Override
         public void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees, float pixelWidthHeightRatio) {
-            if (mPresentation != null && height > 0) {
-                mPresentation.setAspect(width * pixelWidthHeightRatio / height);
+            if (mUi != null && height > 0) {
+                mUi.setAspect(width * pixelWidthHeightRatio / height);
             }
         }
     };
@@ -122,8 +126,8 @@ public final class DualScreen {
             sScaleMode = (sScaleMode + 1) % 3;
             mActivity.getSharedPreferences("car_dual", Context.MODE_PRIVATE).edit().putInt("scale", sScaleMode).apply();
             styleButton();
-            if (mPresentation != null) {
-                mPresentation.applyScale();
+            if (mUi != null) {
+                mUi.applyScale();
             }
         });
 
@@ -200,7 +204,7 @@ public final class DualScreen {
         if (mPlayer != null) {
             mPlayer.addVideoListener(mVideoListener);
             Surface override = LeanbackPlayerAdapter.sOverrideSurface;
-            if (mPresentation != null && override != null && override.isValid()) { // mirror input or screen 2
+            if (mShowing && override != null && override.isValid()) { // mirror input or screen 2
                 bindSurface(override);
             }
         }
@@ -290,7 +294,7 @@ public final class DualScreen {
         mPlaceholder.setVisibility(View.GONE); // the main screen keeps its own picture until the mirror is up
         final int gen = ++mMirrorGen;
         new MirrorRenderer((renderer, ok) -> {
-            if (gen != mMirrorGen || mPresentation == null || mPresentationTarget == null
+            if (gen != mMirrorGen || !mShowing || mPresentationTarget == null
                     || !mPresentationTarget.isValid()) {
                 renderer.release(); // switched off meanwhile
                 return;
@@ -370,38 +374,110 @@ public final class DualScreen {
         mButtonRow.setVisibility(mHasSecond && mButtonsWanted ? View.VISIBLE : View.GONE);
         styleButton();
         boolean want = sEnabled && mStarted && second != null && !mActivity.isFinishing();
-        if (want && mPresentation == null) {
+        if (want && !mShowing) {
             show(second);
-        } else if (!want && mPresentation != null) {
+        } else if (!want && mShowing) {
             hide();
         }
-        mPlaceholder.setVisibility(mPresentation != null && mSecondOnly ? View.VISIBLE : View.GONE);
+        mPlaceholder.setVisibility(mShowing && mSecondOnly ? View.VISIBLE : View.GONE);
     }
 
+    private final Runnable mActivityTimeout = () -> {
+        if (mShowing && mScreenActivity == null && mPresentation == null) {
+            Display d = secondDisplay();
+            if (d != null) {
+                showPresentation(d);   // this unit doesn't open apps on the second screen: use a window there
+            }
+        }
+    };
+
     private void show(Display display) {
+        mShowing = true;
+        sCurrent = this;
+        android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+        display.getRealMetrics(m);
+        android.widget.Toast.makeText(mActivity, "จอ 2: " + display.getName() + "  " + m.widthPixels + "×"
+                + m.heightPixels + "  " + m.densityDpi + "dpi", android.widget.Toast.LENGTH_LONG).show();
+        // An app screen on the second display (like YouTube there): it can hide that screen's toolbar.
+        try {
+            android.content.Intent i = new android.content.Intent(mActivity, ScreenTwoActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            | android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                            | android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            android.app.ActivityOptions o = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(display.getDisplayId());
+            mActivity.startActivity(i, o.toBundle());
+            mMainVideo.removeCallbacks(mActivityTimeout);
+            mMainVideo.postDelayed(mActivityTimeout, 4000);
+        } catch (Exception e) {
+            showPresentation(display);
+        }
+    }
+
+    private void showPresentation(Display display) {
         try {
             mPresentation = new VideoPresentation(mActivity, display);
             mPresentation.show();
-            android.util.DisplayMetrics m = new android.util.DisplayMetrics();
-            display.getRealMetrics(m);
-            android.widget.Toast.makeText(mActivity, "จอ 2: " + display.getName() + "  " + m.widthPixels + "×"
-                    + m.heightPixels + "  " + m.densityDpi + "dpi", android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             mPresentation = null;
+            mShowing = false;
             sEnabled = false;
             styleButton();
             android.widget.Toast.makeText(mActivity, "จอ 2 ไม่ยอมให้แสดงวิดีโอ", android.widget.Toast.LENGTH_LONG).show();
         }
     }
 
+    /** The app screen on the second display is up: give it the video UI. */
+    ScreenTwoUi attachActivity(ScreenTwoActivity a) {
+        if (!mShowing || mPresentation != null) {
+            return null;
+        }
+        mMainVideo.removeCallbacks(mActivityTimeout);
+        mScreenActivity = a;
+        mUi = new ScreenTwoUi();
+        return mUi;
+    }
+
+    /** The app screen on the second display went away (Back there, or closed by the system). */
+    void detachActivity(ScreenTwoActivity a) {
+        if (a != mScreenActivity) {
+            return;
+        }
+        mScreenActivity = null;
+        if (mUi != null) {
+            mUi.release();
+            mUi = null;
+        }
+        if (mShowing) {        // closed from the second screen: switch "จอ 2" off
+            LeanbackPlayerAdapter.sOverrideSurface = null;
+            stopMirror();
+            mShowing = false;
+            sEnabled = false;
+            styleButton();
+            mPlaceholder.setVisibility(View.GONE);
+        }
+    }
+
     private void hide() {
+        mShowing = false;
+        mMainVideo.removeCallbacks(mActivityTimeout);
         LeanbackPlayerAdapter.sOverrideSurface = null;
         stopMirror(); // also gives the video back to the main screen
-        try {
-            mPresentation.dismiss();
-        } catch (Exception ignored) {
+        if (mPresentation != null) {
+            try {
+                mPresentation.dismiss();
+            } catch (Exception ignored) {
+            }
+            mPresentation = null;
         }
-        mPresentation = null;
+        ScreenTwoActivity a = mScreenActivity;
+        mScreenActivity = null;
+        if (a != null) {
+            a.finish();
+        }
+        if (mUi != null) {
+            mUi.release();
+            mUi = null;
+        }
     }
 
     private void bindSurface(Surface surface) {
@@ -426,7 +502,9 @@ public final class DualScreen {
         mPlayer.setVideoSurface(s);
     }
 
-    private final class VideoPresentation extends Presentation {
+    /** Everything shown on the second screen (in the app screen there, or in the fallback window). */
+    final class ScreenTwoUi {
+        private Context mCtx;
         private AspectRatioFrameLayout mFrame;
         private FrameLayout mRootView;
         private ScreenTwoControls mControls;
@@ -436,55 +514,7 @@ public final class DualScreen {
         private io.reactivex.disposables.Disposable mNextSearch;
         private int mMenuIndex = -1;
 
-        /** Like the YouTube app in full screen: the second screen's own toolbar / bars hide (swipe from the edge shows them). */
-        @SuppressWarnings("deprecation")
-        void goFullScreen() {
-            android.view.Window w = getWindow();
-            if (w == null) {
-                return;
-            }
-            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
-                    | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            if (android.os.Build.VERSION.SDK_INT >= 28) {
-                android.view.WindowManager.LayoutParams a = w.getAttributes();
-                a.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-                w.setAttributes(a);
-            }
-            View d = w.getDecorView();
-            d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                w.setDecorFitsSystemWindows(false);
-                android.view.WindowInsetsController c = w.getInsetsController();
-                if (c != null) {
-                    c.hide(android.view.WindowInsets.Type.systemBars());
-                    c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                }
-            }
-        }
-
-        @Override
-        protected void onStart() {
-            super.onStart();
-            goFullScreen();
-        }
-
-        @Override
-        public void onWindowFocusChanged(boolean hasFocus) {
-            super.onWindowFocusChanged(hasFocus);
-            if (hasFocus) {
-                goFullScreen();
-            }
-        }
-
-        @Override
-        protected void onStop() {
+        void release() {
             if (mControls != null) {
                 mControls.release();
             }
@@ -494,7 +524,6 @@ public final class DualScreen {
             if (mNextSearch != null) {
                 mNextSearch.dispose();
             }
-            super.onStop();
         }
 
         private void buildPanels() {
@@ -508,7 +537,7 @@ public final class DualScreen {
                     }
                 }
                 @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
-                    VideoPresentation.this.setVideoFraction(fraction, videoOnRight);
+                    ScreenTwoUi.this.setVideoFraction(fraction, videoOnRight);
                 }
             };
             SidePanel.Host menuHost = new SidePanel.Host() {
@@ -519,10 +548,10 @@ public final class DualScreen {
                     nextHost.onVideoClicked(video);
                 }
                 @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
-                    VideoPresentation.this.setVideoFraction(fraction, videoOnRight);
+                    ScreenTwoUi.this.setVideoFraction(fraction, videoOnRight);
                 }
             };
-            mNext = new SidePanel(mActivity, getContext(), mRootView, nextHost, false, "วิดีโอถัดไป", null);
+            mNext = new SidePanel(mActivity, mCtx, mRootView, nextHost, false, "วิดีโอถัดไป", null);
             mNext.setSearch((query, panel) -> {
                 if (mNextSearch != null) {
                     mNextSearch.dispose();
@@ -533,7 +562,7 @@ public final class DualScreen {
                     }
                 });
             });
-            mMenu = new SidePanel(mActivity, getContext(), mRootView, menuHost, true, "PiloTube",
+            mMenu = new SidePanel(mActivity, mCtx, mRootView, menuHost, true, "PiloTube",
                     new SidePanel.Tabs() {
                         @Override public String[] titles() {
                             return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES;
@@ -611,27 +640,20 @@ public final class DualScreen {
             mFrame.setLayoutParams(lp);
         }
 
-        VideoPresentation(Context outer, Display display) {
-            super(outer, display);
-        }
-
-        @Override
-        protected void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            FrameLayout root = new FrameLayout(getContext());
+        View build(Context ctx) {
+            mCtx = ctx;
+            FrameLayout root = new FrameLayout(ctx);
             mRootView = root;
             root.setBackgroundColor(Color.BLACK);
-            mFrame = new AspectRatioFrameLayout(getContext());
+            mFrame = new AspectRatioFrameLayout(ctx);
             applyScale();
-            SurfaceView sv = new SurfaceView(getContext());
+            SurfaceView sv = new SurfaceView(ctx);
             mFrame.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
             root.addView(mFrame, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
-            setContentView(root);
-            goFullScreen();
             buildPanels();
-            mControls = new ScreenTwoControls(getContext(), mActivity, root, () -> mPlayer, mPanels);
+            mControls = new ScreenTwoControls(ctx, mActivity, root, () -> mPlayer, mPanels);
             mControls.showFor(); // show once so it's clear the second screen can be touched
             if (mPlayer != null) {
                 Format f = mPlayer.getVideoFormat();
@@ -659,6 +681,7 @@ public final class DualScreen {
                     }
                 }
             });
+            return root;
         }
 
         void applyScale() {
@@ -673,6 +696,61 @@ public final class DualScreen {
         void setAspect(float aspect) {
             if (mFrame != null && aspect > 0) {
                 mFrame.setAspectRatio(aspect);
+            }
+        }
+    }
+
+    /** Fallback when this unit doesn't let apps open on the second screen: a window there. */
+    private final class VideoPresentation extends Presentation {
+        private final ScreenTwoUi mWindowUi = new ScreenTwoUi();
+
+        VideoPresentation(Context outer, Display display) {
+            super(outer, display);
+        }
+
+        @Override
+        protected void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            mUi = mWindowUi;
+            setContentView(mWindowUi.build(getContext()));
+            goFullScreen(getWindow());
+        }
+
+        @Override
+        protected void onStop() {
+            mWindowUi.release();
+            super.onStop();
+        }
+    }
+
+    /** Like the YouTube app in full screen: the second screen's own toolbar / bars hide (a swipe from the edge shows them). */
+    @SuppressWarnings("deprecation")
+    static void goFullScreen(android.view.Window w) {
+        if (w == null) {
+            return;
+        }
+        w.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
+                | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            android.view.WindowManager.LayoutParams a = w.getAttributes();
+            a.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(a);
+        }
+        View d = w.getDecorView();
+        d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController c = w.getInsetsController();
+            if (c != null) {
+                c.hide(android.view.WindowInsets.Type.systemBars());
+                c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         }
     }

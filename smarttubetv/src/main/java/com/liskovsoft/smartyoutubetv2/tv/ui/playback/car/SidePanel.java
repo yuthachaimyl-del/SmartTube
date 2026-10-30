@@ -66,6 +66,7 @@ public final class SidePanel {
     private Search mSearch;
     private boolean mShowingSearch;
     private android.speech.SpeechRecognizer mRecognizer;
+    private TextView mSearchOpen;
 
     public SidePanel(Activity activity, ViewGroup root, Host host) {
         this(activity, root, host, false, "วิดีโอถัดไป", null);
@@ -182,7 +183,7 @@ public final class SidePanel {
 
     public void setSearch(Search search) {
         mSearch = search;
-        if (mHeader == null || mSearchRow != null) {
+        if (mHeader == null || mSearchOpen != null) {
             return;
         }
         Context vc = mHeader.getContext();
@@ -191,14 +192,24 @@ public final class SidePanel {
         open.setTextColor(Color.WHITE);
         open.setGravity(Gravity.CENTER);
         open.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(24));
-        open.setOnClickListener(v -> showSearch(mSearchRow.getVisibility() != View.VISIBLE));
+        mSearchOpen = open;
         mHeader.addView(open, mHeader.getChildCount() - 1, new LinearLayout.LayoutParams(dp(56), dp(52)));
-
-        mSearchRow = new LinearLayout(vc);
-        mSearchRow.setOrientation(LinearLayout.HORIZONTAL);
-        mSearchRow.setGravity(Gravity.CENTER_VERTICAL);
-        mSearchRow.setPadding(dp(12), 0, dp(12), dp(8));
+        if (mCtx == mActivity) {
+            // main screen: the search box lives in its own small window, so the player can't take its keys or focus
+            open.setOnClickListener(v -> openSearchDialog());
+            return;
+        }
+        open.setOnClickListener(v -> showSearch(mSearchRow.getVisibility() != View.VISIBLE));
+        mSearchRow = buildSearchRow(vc);
         mSearchRow.setVisibility(View.GONE);
+        mColumn.addView(mSearchRow, 1);   // right under the header
+    }
+
+    private LinearLayout buildSearchRow(Context vc) {
+        LinearLayout row = new LinearLayout(vc);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), 0, dp(12), dp(8));
 
         mSearchBox = new android.widget.EditText(vc);
         mSearchBox.setHint("ค้นหาวิดีโอ…");
@@ -219,22 +230,65 @@ public final class SidePanel {
             submitSearch();
             return true;
         });
-        mSearchRow.addView(mSearchBox, new LinearLayout.LayoutParams(0, dp(48), 1));
+        row.addView(mSearchBox, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        mMic = chipButton("🎤", v -> listen());
+        mMic = chipButton(vc, "🎤", v -> listen());
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(56), dp(48));
         mlp.leftMargin = dp(8);
-        mSearchRow.addView(mMic, mlp);
-        TextView go = chipButton("ค้นหา", v -> submitSearch());
+        row.addView(mMic, mlp);
+        TextView go = chipButton(vc, "ค้นหา", v -> submitSearch());
         LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
         glp.leftMargin = dp(8);
-        mSearchRow.addView(go, glp);
-
-        mColumn.addView(mSearchRow, 1);   // right under the header
+        row.addView(go, glp);
+        return row;
     }
 
-    private TextView chipButton(String text, View.OnClickListener click) {
-        TextView b = new TextView(mHeader.getContext());
+    private android.app.Dialog mSearchDialog;
+
+    /** Main screen: a small search window at the top of the panel (keyboard, 🎤 voice, ค้นหา). */
+    private void openSearchDialog() {
+        if (mSearchDialog != null && mSearchDialog.isShowing()) {
+            return;
+        }
+        android.app.Dialog d = new android.app.Dialog(mActivity);
+        d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout row = buildSearchRow(mActivity);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xF2161616);
+        bg.setCornerRadius(dp(18));
+        bg.setStroke(dp(1), 0x33FFFFFF);
+        row.setBackground(bg);
+        d.setContentView(row);
+        d.setCanceledOnTouchOutside(true);
+        android.view.Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            w.setGravity(Gravity.TOP | (mLeft ? Gravity.START : Gravity.END));
+            android.view.WindowManager.LayoutParams lp = w.getAttributes();
+            lp.width = Math.max(dp(360), mPanel.getWidth() - dp(16));
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            lp.x = dp(8);
+            lp.y = dp(62);
+            w.setAttributes(lp);
+            w.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+                    | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        }
+        d.setOnDismissListener(x -> {
+            if (mRecognizer != null) {
+                mRecognizer.destroy();
+                mRecognizer = null;
+            }
+            mSearchDialog = null;
+        });
+        mSearchDialog = d;
+        d.show();
+        mSearchBox.requestFocus();
+    }
+
+    private TextView chipButton(Context vc, String text, View.OnClickListener click) {
+        TextView b = new TextView(vc);
         b.setText(text);
         b.setTextColor(Color.WHITE);
         b.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
@@ -276,6 +330,9 @@ public final class SidePanel {
             imm.hideSoftInputFromWindow(mSearchBox.getWindowToken(), 0);
         }
         mSearchBox.clearFocus();
+        if (mSearchDialog != null) {
+            mSearchDialog.dismiss();
+        }
         mShowingSearch = true;
         selectTab(-1);
         setItems(null, "กำลังค้นหา “" + q + "”…");
@@ -372,6 +429,9 @@ public final class SidePanel {
         mOpen = false;
         if (mSearchRow != null && mSearchRow.getVisibility() == View.VISIBLE) {
             showSearch(false);
+        }
+        if (mSearchDialog != null) {
+            mSearchDialog.dismiss();
         }
         if (mRecognizer != null) {
             mRecognizer.destroy();
