@@ -22,7 +22,7 @@ import com.liskovsoft.smartyoutubetv2.tv.ui.playback.PlaybackActivity;
 
 /**
  * Car build: after Back from a playing video it keeps playing behind the app's pages. This bar at the top
- * of those pages (in the empty black area) shows it: tap to go back to the video, ✕ to stop it.
+ * of those pages (bottom, clear of the search row) shows it: tap to go back to the video, ✕ to stop it.
  */
 public final class NowPlayingBar {
     private static final String TAG = "car_now_playing";
@@ -158,9 +158,9 @@ public final class NowPlayingBar {
             ViewManager.instance(a).startView(PlaybackView.class);
         });
 
-        int w = Math.min(a.getResources().getDisplayMetrics().widthPixels - dp(a, 32), dp(a, 500));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, dp(a, 60), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        lp.topMargin = dp(a, 18);
+        int w = Math.min(Math.round(a.getResources().getDisplayMetrics().widthPixels * 0.7f), dp(a, 520));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, dp(a, 56), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lp.bottomMargin = dp(a, 16); // bottom: clear of the page's search / account buttons at the top
         bar.setLayoutParams(lp);
         return bar;
     }
