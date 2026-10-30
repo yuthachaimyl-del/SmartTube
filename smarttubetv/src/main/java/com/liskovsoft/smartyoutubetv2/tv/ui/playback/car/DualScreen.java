@@ -481,6 +481,17 @@ public final class DualScreen {
                             loadMenu(index);
                         }
                     });
+            mMenu.setSearch((query, panel) -> {
+                if (mMenuLoad != null) {
+                    mMenuLoad.dispose();
+                }
+                mMenuIndex = -2;
+                mMenuLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.search(query, (videos, error) -> {
+                    if (mMenu != null && mMenuIndex == -2) {
+                        mMenu.setItems(videos, error != null ? error : "ไม่พบวิดีโอ");
+                    }
+                });
+            });
         }
 
         private void loadMenu(int index) {
@@ -508,7 +519,7 @@ public final class DualScreen {
                     mNext.close();
                 }
                 mMenu.open();
-                if (mMenuIndex < 0) {
+                if (mMenuIndex == -1) {
                     loadMenu(0);
                 }
             }

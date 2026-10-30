@@ -37,6 +37,11 @@ public final class SidePanel {
         void setVideoFraction(float fraction, boolean videoOnRight); // 1 = full width
     }
 
+    /** Search in the menu: typed or spoken words. */
+    public interface Search {
+        void onSearch(String query, SidePanel panel);
+    }
+
     /** Left menu: a row of section tabs above the list. */
     public interface Tabs {
         String[] titles();
@@ -54,6 +59,12 @@ public final class SidePanel {
     private final boolean mLeft;
     private final TextView mEmpty;
     private final List<TextView> mTabViews = new ArrayList<>();
+    private LinearLayout mHeader, mColumn;
+    private LinearLayout mSearchRow;
+    private android.widget.EditText mSearchBox;
+    private TextView mMic;
+    private Search mSearch;
+    private android.speech.SpeechRecognizer mRecognizer;
 
     public SidePanel(Activity activity, ViewGroup root, Host host) {
         this(activity, root, host, false, "วิดีโอถัดไป", null);
@@ -91,6 +102,8 @@ public final class SidePanel {
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(20));
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        mHeader = header;
+        mColumn = column;
         TextView close = new TextView(vc);
         close.setText("✕");
         close.setTextColor(Color.WHITE);
@@ -164,6 +177,166 @@ public final class SidePanel {
         });
     }
 
+    // ---- search (left menu): a 🔍 button in the header opens a search bar (keyboard or 🎤 voice)
+
+    public void setSearch(Search search) {
+        mSearch = search;
+        if (mHeader == null || mSearchRow != null) {
+            return;
+        }
+        Context vc = mHeader.getContext();
+        TextView open = new TextView(vc);
+        open.setText("🔍");
+        open.setTextColor(Color.WHITE);
+        open.setGravity(Gravity.CENTER);
+        open.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(24));
+        open.setOnClickListener(v -> showSearch(mSearchRow.getVisibility() != View.VISIBLE));
+        mHeader.addView(open, mHeader.getChildCount() - 1, new LinearLayout.LayoutParams(dp(56), dp(52)));
+
+        mSearchRow = new LinearLayout(vc);
+        mSearchRow.setOrientation(LinearLayout.HORIZONTAL);
+        mSearchRow.setGravity(Gravity.CENTER_VERTICAL);
+        mSearchRow.setPadding(dp(12), 0, dp(12), dp(8));
+        mSearchRow.setVisibility(View.GONE);
+
+        mSearchBox = new android.widget.EditText(vc);
+        mSearchBox.setHint("ค้นหาวิดีโอ…");
+        mSearchBox.setHintTextColor(0xFF9A9A9A);
+        mSearchBox.setTextColor(Color.WHITE);
+        mSearchBox.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
+        mSearchBox.setSingleLine(true);
+        mSearchBox.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        mSearchBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN);
+        mSearchBox.setPadding(dp(16), 0, dp(16), 0);
+        GradientDrawable box = new GradientDrawable();
+        box.setColor(0xFF2A2A2A);
+        box.setCornerRadius(dp(24));
+        mSearchBox.setBackground(box);
+        mSearchBox.setOnEditorActionListener((v, actionId, event) -> {
+            submitSearch();
+            return true;
+        });
+        mSearchRow.addView(mSearchBox, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+        mMic = chipButton("🎤", v -> listen());
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(56), dp(48));
+        mlp.leftMargin = dp(8);
+        mSearchRow.addView(mMic, mlp);
+        TextView go = chipButton("ค้นหา", v -> submitSearch());
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+        glp.leftMargin = dp(8);
+        mSearchRow.addView(go, glp);
+
+        mColumn.addView(mSearchRow, 1);   // right under the header
+    }
+
+    private TextView chipButton(String text, View.OnClickListener click) {
+        TextView b = new TextView(mHeader.getContext());
+        b.setText(text);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(14), 0, dp(14), 0);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0x33FFFFFF);
+        bg.setCornerRadius(dp(24));
+        b.setBackground(bg);
+        b.setOnClickListener(click);
+        return b;
+    }
+
+    private void showSearch(boolean show) {
+        if (mSearchRow == null) {
+            return;
+        }
+        mSearchRow.setVisibility(show ? View.VISIBLE : View.GONE);
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager)
+                mSearchBox.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (show) {
+            mSearchBox.requestFocus();
+            if (imm != null) {
+                mSearchBox.post(() -> imm.showSoftInput(mSearchBox, 0));
+            }
+        } else if (imm != null) {
+            imm.hideSoftInputFromWindow(mSearchBox.getWindowToken(), 0);
+        }
+    }
+
+    private void submitSearch() {
+        String q = mSearchBox.getText().toString().trim();
+        if (q.isEmpty() || mSearch == null) {
+            return;
+        }
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager)
+                mSearchBox.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(mSearchBox.getWindowToken(), 0);
+        }
+        mSearchBox.clearFocus();
+        selectTab(-1);
+        setItems(null, "กำลังค้นหา “" + q + "”…");
+        mSearch.onSearch(q, this);
+    }
+
+    /** Voice search (Thai), right here without leaving the video. */
+    private void listen() {
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(mActivity)) {
+            android.widget.Toast.makeText(mCtx, "เครื่องนี้ไม่มีระบบฟังเสียง พิมพ์แทนได้", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 23 && mActivity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            mActivity.requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, 7301);
+            android.widget.Toast.makeText(mCtx, "อนุญาตไมโครโฟน แล้วกด 🎤 อีกครั้ง", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (mRecognizer != null) {
+            mRecognizer.destroy();
+        }
+        mRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(mActivity);
+        mRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+            @Override public void onReadyForSpeech(android.os.Bundle b) { mMic.setText("●"); mSearchBox.setHint("พูดได้เลย…"); }
+            @Override public void onBeginningOfSpeech() { }
+            @Override public void onRmsChanged(float v) { }
+            @Override public void onBufferReceived(byte[] b) { }
+            @Override public void onEndOfSpeech() { mMic.setText("🎤"); }
+            @Override public void onError(int e) {
+                mMic.setText("🎤");
+                mSearchBox.setHint("ค้นหาวิดีโอ…");
+                android.widget.Toast.makeText(mCtx, "ไม่ได้ยิน ลองพูดอีกครั้ง", android.widget.Toast.LENGTH_SHORT).show();
+            }
+            @Override public void onResults(android.os.Bundle b) {
+                mMic.setText("🎤");
+                mSearchBox.setHint("ค้นหาวิดีโอ…");
+                java.util.ArrayList<String> r = b.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                if (r != null && !r.isEmpty()) {
+                    mSearchBox.setText(r.get(0));
+                    submitSearch();
+                }
+            }
+            @Override public void onPartialResults(android.os.Bundle b) {
+                java.util.ArrayList<String> r = b.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                if (r != null && !r.isEmpty()) {
+                    mSearchBox.setText(r.get(0));
+                }
+            }
+            @Override public void onEvent(int t, android.os.Bundle b) { }
+        });
+        android.content.Intent i = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "th-TH")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "th-TH")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        try {
+            mRecognizer.startListening(i);
+        } catch (Exception e) {
+            android.widget.Toast.makeText(mCtx, "เปิดไมค์ไม่ได้", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private int dp(float v) {
         return Math.round(v * mCtx.getResources().getDisplayMetrics().density);
     }
@@ -192,6 +365,13 @@ public final class SidePanel {
             return;
         }
         mOpen = false;
+        if (mSearchRow != null && mSearchRow.getVisibility() == View.VISIBLE) {
+            showSearch(false);
+        }
+        if (mRecognizer != null) {
+            mRecognizer.destroy();
+            mRecognizer = null;
+        }
         mHost.setVideoFraction(1f, false);
         mPanel.animate().translationX(mLeft ? -mPanel.getWidth() : mPanel.getWidth()).setDuration(180)
                 .withEndAction(() -> mPanel.setVisibility(View.GONE)).start();

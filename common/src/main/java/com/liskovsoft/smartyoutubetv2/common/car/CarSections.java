@@ -63,6 +63,27 @@ public final class CarSections {
         }
     }
 
+    /** Search results as one flat list of videos. */
+    public static Disposable search(String query, Callback callback) {
+        Handler main = new Handler(Looper.getMainLooper());
+        List<Video> out = new ArrayList<>();
+        try {
+            return YouTubeServiceManager.instance().getContentService().getSearchObserve(query).subscribe(
+                    groups -> {
+                        if (groups != null) {
+                            for (MediaGroup g : groups) {
+                                add(out, g);
+                            }
+                        }
+                        post(main, callback, new ArrayList<>(out), null);
+                    },
+                    e -> post(main, callback, out, "ค้นหาไม่ได้ ลองอีกครั้ง"));
+        } catch (Exception e) {
+            post(main, callback, out, "ค้นหาไม่ได้ ลองอีกครั้ง");
+            return null;
+        }
+    }
+
     private static void add(List<Video> out, MediaGroup g) {
         if (g == null || out.size() >= MAX_VIDEOS) {
             return;

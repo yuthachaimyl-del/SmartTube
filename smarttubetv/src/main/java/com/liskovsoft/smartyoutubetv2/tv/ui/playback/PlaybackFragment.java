@@ -227,6 +227,22 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         });
     }
 
+    private void searchLeftMenu(String query) {
+        if (mLeftMenu == null) {
+            return;
+        }
+        if (mLeftMenuLoad != null) {
+            mLeftMenuLoad.dispose();
+        }
+        mLeftMenuIndex = -2; // search results, not a tab
+        final String q = query;
+        mLeftMenuLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.search(q, (videos, error) -> {
+            if (mLeftMenu != null && mLeftMenuIndex == -2) {
+                mLeftMenu.setItems(videos, error != null ? error : "ไม่พบวิดีโอสำหรับ “" + q + "”");
+            }
+        });
+    }
+
     private java.util.List<Video> collectSuggestions() {
         java.util.List<Video> out = new java.util.ArrayList<>();
         if (mRowsAdapter == null) {
@@ -289,6 +305,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                         @Override public String[] titles() { return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES; }
                         @Override public void onTabSelected(int index, com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel panel) { loadLeftMenu(index); }
                     });
+            mLeftMenu.setSearch((query, panel) -> searchLeftMenu(query));
         }
         if (mCenterControls == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
             mCenterControls = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.CenterControls(
@@ -424,7 +441,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     mEdgeSwipeDone = true;
                     hideControlsOverlay(true);
                     mLeftMenu.open();
-                    if (mLeftMenuIndex < 0) {
+                    if (mLeftMenuIndex == -1) {
                         loadLeftMenu(0);
                     }
                     return;
