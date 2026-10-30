@@ -100,7 +100,7 @@ public final class NowPlayingBar {
         bar.bringToFront();
         Video video = PlaybackPresenter.instance(a).getVideo();
         TextView title = bar.findViewWithTag(TAG + "_title");
-        String t = (v.isPlaying() ? "▶  กำลังเล่น: " : "❚❚  หยุดไว้: ") + (video != null && video.getTitle() != null ? video.getTitle() : "");
+        String t = (v.isPlaying() ? "▶ " : "❚❚ ") + (video != null && video.getTitle() != null ? video.getTitle() : "");
         if (title != null && !t.contentEquals(title.getText())) {
             title.setText(t);
         }
@@ -111,35 +111,35 @@ public final class NowPlayingBar {
         bar.setTag(TAG);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(a, 20), 0, dp(a, 6), 0);
+        bar.setPadding(dp(a, 14), 0, dp(a, 2), 0);
         bar.setElevation(dp(a, 24));
         GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(a, 30));
+        bg.setCornerRadius(dp(a, 22));
         bg.setColor(0xEE1F2A44);
-        bg.setStroke(dp(a, 1.5f), 0x88FFFFFF);
+        bg.setStroke(dp(a, 1), 0x66FFFFFF);
         bar.setBackground(bg);
         bar.setFocusable(false);
 
         TextView title = new TextView(a);
         title.setTag(TAG + "_title");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 20));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 14));
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.END);
         bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         TextView back = new TextView(a);
-        back.setText("กลับไปดู");
+        back.setText("ดูต่อ");
         back.setTextColor(0xFF8AB4FF);
-        back.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 19));
-        back.setPadding(dp(a, 14), 0, dp(a, 8), 0);
+        back.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 14));
+        back.setPadding(dp(a, 10), 0, dp(a, 4), 0);
         bar.addView(back);
 
         TextView stop = new TextView(a);
         stop.setText("✕");
         stop.setTextColor(Color.WHITE);
         stop.setGravity(Gravity.CENTER);
-        stop.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 24));
+        stop.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(a, 18));
         stop.setOnClickListener(x -> {
             PlaybackView v = playingBehind(a);
             ViewManager.instance(a).blockTop(null);
@@ -151,16 +151,16 @@ public final class NowPlayingBar {
             }
             bar.setVisibility(View.GONE);
         });
-        bar.addView(stop, new LinearLayout.LayoutParams(dp(a, 56), dp(a, 56)));
+        bar.addView(stop, new LinearLayout.LayoutParams(dp(a, 44), dp(a, 44)));
 
         bar.setOnClickListener(x -> {
             bar.setVisibility(View.GONE);
             ViewManager.instance(a).startView(PlaybackView.class);
         });
 
-        int w = Math.min(Math.round(a.getResources().getDisplayMetrics().widthPixels * 0.7f), dp(a, 520));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, dp(a, 56), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        lp.bottomMargin = dp(a, 16); // bottom: clear of the page's search / account buttons at the top
+        int w = Math.min(Math.round(a.getResources().getDisplayMetrics().widthPixels * 0.7f), dp(a, 380));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, dp(a, 44), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        lp.bottomMargin = dp(a, 10); // bottom: clear of the page's search / account buttons at the top
         bar.setLayoutParams(lp);
         return bar;
     }
