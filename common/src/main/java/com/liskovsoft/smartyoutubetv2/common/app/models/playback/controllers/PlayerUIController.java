@@ -71,6 +71,11 @@ public class PlayerUIController extends BasePlayerController {
             return;
         }
 
+        // Car build: video is on the second screen, the main screen is the remote - keep the controls
+        if (com.liskovsoft.smartyoutubetv2.common.car.CarState.sKeepControls) {
+            return;
+        }
+
         // Playing the video and dialog overlay isn't shown
         if (getPlayer().isPlaying() && !getAppDialogPresenter().isDialogShown()) {
             if (getPlayer().isControlsShown()) { // don't hide when suggestions is shown

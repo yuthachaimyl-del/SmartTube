@@ -118,7 +118,7 @@ public final class DualScreen {
 
     private void addPlaceholder() {
         mPlaceholder = new TextView(mActivity);
-        mPlaceholder.setText("▶  กำลังเล่นบนจอ 2\nแตะเพื่อเปิดปุ่มควบคุม");
+        mPlaceholder.setText("▶  กำลังเล่นบนจอ 2");
         mPlaceholder.setTextColor(0xCCFFFFFF);
         mPlaceholder.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         mPlaceholder.setGravity(Gravity.CENTER);
@@ -184,6 +184,10 @@ public final class DualScreen {
         try {
             mPresentation = new VideoPresentation(mActivity, display);
             mPresentation.show();
+            android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+            display.getRealMetrics(m);
+            android.widget.Toast.makeText(mActivity, "จอ 2: " + display.getName() + "  " + m.widthPixels + "×"
+                    + m.heightPixels + "  " + m.densityDpi + "dpi", android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             mPresentation = null;
             sEnabled = false;

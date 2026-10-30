@@ -105,6 +105,12 @@ public final class CenterControls {
     }
 
     private void sync() {
+        // second-screen mode: the main screen is the remote, keep the controls on screen
+        boolean keep = DualScreen.isActive();
+        com.liskovsoft.smartyoutubetv2.common.car.CarState.sKeepControls = keep;
+        if (keep && !mHost.isControlsShown() && mHost.getPlayer() != null) {
+            mHost.onUserAction();
+        }
         boolean show = mHost.isControlsShown() && mHost.getPlayer() != null;
         mBar.setVisibility(show ? View.VISIBLE : View.GONE);
         if (show) {
