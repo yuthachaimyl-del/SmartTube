@@ -76,6 +76,15 @@ public abstract class LeanbackActivity extends MotherActivity {
         mModeSyncManager.restore(this);
 
         getViewManager().addTop(this);
+
+        // Car build: a video still playing behind this page -> a bar to go back to it
+        com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.NowPlayingBar.onResume(this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.NowPlayingBar.onPause(this);
     }
 
     @Override

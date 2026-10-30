@@ -192,6 +192,16 @@ public class PlaybackActivity extends LeanbackActivity {
         // Also, avoid enter pip on stop!
         // More info: https://developer.android.com/guide/topics/ui/picture-in-picture#continuing_playback
 
+        // Car build: Back while a video plays -> it keeps playing behind the app's pages
+        // (a bar at the top of those pages goes back to it, or stops it)
+        if (isBackPressed() && mPlaybackFragment != null && mPlaybackFragment.isPlaying() && !isInPipMode()) {
+            mPlaybackFragment.blockEngine(true);
+            getViewManager().blockTop(this);
+            getViewManager().startParentView(this);
+            com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.start(this);
+            return;
+        }
+
         // NOTE: block back button for PIP.
         // User pressed PIP button in the player.
         if (!skipPip()) {
