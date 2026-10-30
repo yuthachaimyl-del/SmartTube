@@ -201,7 +201,7 @@ public class MotherActivity extends FragmentActivity {
             contextWrapper = LocaleContextWrapper.wrap(context, LocaleUpdater.getSavedLocale(context), sCachedDisplayMetrics);
 
             // Car build: let a screen draw its UI smaller than the rest of the app
-            float factor = getCarDensityFactor();
+            float factor = getCarDensityFactor(context);
             if (factor != 1f && contextWrapper != null) {
                 try {
                     android.content.res.Configuration cfg =
@@ -218,7 +218,7 @@ public class MotherActivity extends FragmentActivity {
     }
 
     /** Car build: UI size multiplier for this screen (1 = normal). */
-    protected float getCarDensityFactor() {
+    protected float getCarDensityFactor(Context base) {
         return 1f;
     }
 

@@ -122,6 +122,7 @@ public final class DualScreen {
         mPlaceholder.setTextColor(0xCCFFFFFF);
         mPlaceholder.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         mPlaceholder.setGravity(Gravity.CENTER);
+        mPlaceholder.setBackgroundColor(Color.BLACK); // hides the last frame left on the main screen
         mPlaceholder.setVisibility(View.GONE);
         mPlaceholder.setClickable(false);
         mRoot.addView(mPlaceholder, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
