@@ -60,7 +60,7 @@ public final class SidePanel {
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(8), dp(8), dp(4));
+        header.setPadding(dp(16), dp(8), dp(96), dp(4)); // clear of the on-screen Back button
         TextView title = new TextView(activity);
         title.setText("วิดีโอถัดไป");
         title.setTextColor(Color.WHITE);
