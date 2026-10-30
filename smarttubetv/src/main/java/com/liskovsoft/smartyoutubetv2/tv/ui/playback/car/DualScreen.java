@@ -433,6 +433,7 @@ public final class DualScreen {
         private SidePanel mNext;
         private SidePanel mMenu;
         private io.reactivex.disposables.Disposable mMenuLoad;
+        private io.reactivex.disposables.Disposable mNextSearch;
         private int mMenuIndex = -1;
 
         @Override
@@ -442,6 +443,9 @@ public final class DualScreen {
             }
             if (mMenuLoad != null) {
                 mMenuLoad.dispose();
+            }
+            if (mNextSearch != null) {
+                mNextSearch.dispose();
             }
             super.onStop();
         }
@@ -472,6 +476,16 @@ public final class DualScreen {
                 }
             };
             mNext = new SidePanel(mActivity, getContext(), mRootView, nextHost, false, "วิดีโอถัดไป", null);
+            mNext.setSearch((query, panel) -> {
+                if (mNextSearch != null) {
+                    mNextSearch.dispose();
+                }
+                mNextSearch = com.liskovsoft.smartyoutubetv2.common.car.CarSections.search(query, (videos, error) -> {
+                    if (mNext != null) {
+                        mNext.setItems(videos, error != null ? error : "ไม่พบวิดีโอ");
+                    }
+                });
+            });
             mMenu = new SidePanel(mActivity, getContext(), mRootView, menuHost, true, "PiloTube",
                     new SidePanel.Tabs() {
                         @Override public String[] titles() {

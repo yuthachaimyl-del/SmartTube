@@ -209,6 +209,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel mSidePanel;
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel mLeftMenu;
     private io.reactivex.disposables.Disposable mLeftMenuLoad;
+    private io.reactivex.disposables.Disposable mSidePanelSearch;
     private int mLeftMenuIndex = -1;
 
     private void loadLeftMenu(int index) {
@@ -292,6 +293,17 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
                         @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
                     });
+            mSidePanel.setSearch((query, panel) -> {
+                if (mSidePanelSearch != null) {
+                    mSidePanelSearch.dispose();
+                }
+                final String q = query;
+                mSidePanelSearch = com.liskovsoft.smartyoutubetv2.common.car.CarSections.search(q, (videos, error) -> {
+                    if (mSidePanel != null) {
+                        mSidePanel.setItems(videos, error != null ? error : "ไม่พบวิดีโอสำหรับ “" + q + "”");
+                    }
+                });
+            });
         }
         if (mLeftMenu == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
             mLeftMenu = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel(

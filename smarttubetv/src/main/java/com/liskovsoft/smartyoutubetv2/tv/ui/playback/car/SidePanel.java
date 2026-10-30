@@ -64,6 +64,7 @@ public final class SidePanel {
     private android.widget.EditText mSearchBox;
     private TextView mMic;
     private Search mSearch;
+    private boolean mShowingSearch;
     private android.speech.SpeechRecognizer mRecognizer;
 
     public SidePanel(Activity activity, ViewGroup root, Host host) {
@@ -275,6 +276,7 @@ public final class SidePanel {
             imm.hideSoftInputFromWindow(mSearchBox.getWindowToken(), 0);
         }
         mSearchBox.clearFocus();
+        mShowingSearch = true;
         selectTab(-1);
         setItems(null, "กำลังค้นหา “" + q + "”…");
         mSearch.onSearch(q, this);
@@ -347,11 +349,14 @@ public final class SidePanel {
 
     public void open() {
         List<Video> items = mHost.getSuggestions();
-        if (!mLeft && (items == null || items.isEmpty())) {
+        if (!mLeft && (items == null || items.isEmpty()) && mSearch == null) {
             android.widget.Toast.makeText(mCtx, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
-        mAdapter.set(items);
+        if (!mLeft) {   // next videos: back to the suggestions each time it opens
+            mShowingSearch = false;
+            setItems(items, "ยังไม่มีวิดีโอถัดไป  แตะ 🔍 เพื่อค้นหา");
+        }
         mOpen = true;
         mHost.setVideoFraction(VIDEO_FRACTION, mLeft);
         mPanel.setVisibility(View.VISIBLE);
@@ -379,7 +384,7 @@ public final class SidePanel {
 
     /** Refresh the list while open (suggestions keep loading). */
     public void refresh() {
-        if (mOpen) {
+        if (mOpen && !mShowingSearch && !mLeft) {
             mAdapter.set(mHost.getSuggestions());
         }
     }
