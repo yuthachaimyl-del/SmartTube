@@ -39,6 +39,7 @@ final class ScreenTwoControls {
     private final TextView mPlayPause;
     private final SeekBar mSeek;
     private final TextView mTime;
+    private final TextView mTitle;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private boolean mDragging;
     private long mLastTapMs;
@@ -117,9 +118,21 @@ final class ScreenTwoControls {
         root.addView(mPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
+        // video title on top, like the main screen
+        mTitle = new TextView(ctx);
+        mTitle.setTextColor(Color.WHITE);
+        mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(24));
+        mTitle.setMaxLines(2);
+        mTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        mTitle.setPadding(dp(32), dp(20), dp(32), dp(40));
+        mTitle.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xCC000000, 0x00000000}));
+        mTitle.setVisibility(View.GONE);
+        root.addView(mTitle, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+
         // tap the video: show / hide; double-tap left or right side: skip 10 s
         root.setOnTouchListener((v, e) -> {
-            android.util.Log.i("CarS2", "root touch " + e.getActionMasked() + " " + e.getX() + "," + e.getY());
             if (e.getActionMasked() != MotionEvent.ACTION_UP) {
                 return true;
             }
@@ -155,7 +168,6 @@ final class ScreenTwoControls {
         bg.setStroke(dp(1.5f), 0x66FFFFFF);
         b.setBackground(bg);
         b.setOnClickListener(v -> {
-            android.util.Log.i("CarS2", "click " + text);
             click.onClick(v);
             showFor();
         });
@@ -173,6 +185,7 @@ final class ScreenTwoControls {
 
     private void setShown(boolean shown) {
         mPanel.setVisibility(shown ? View.VISIBLE : View.GONE);
+        mTitle.setVisibility(shown && mTitle.length() > 0 ? View.VISIBLE : View.GONE);
         mHandler.removeCallbacks(mTick);
         if (shown) {
             mHandler.post(mTick);
@@ -189,6 +202,16 @@ final class ScreenTwoControls {
             return;
         }
         mPlayPause.setText(p.getPlayWhenReady() ? "❚❚" : "▶");
+        try {
+            com.liskovsoft.smartyoutubetv2.common.app.models.data.Video v =
+                    com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter.instance(mActivity).getVideo();
+            String title = v != null ? v.getTitle() : null;
+            if (title != null && !title.contentEquals(mTitle.getText())) {
+                mTitle.setText(title);
+            }
+            mTitle.setVisibility(mPanel.getVisibility() == View.VISIBLE && mTitle.length() > 0 ? View.VISIBLE : View.GONE);
+        } catch (Throwable ignored) {
+        }
         long dur = p.getDuration(), pos = p.getCurrentPosition();
         if (dur > 0 && !mDragging) {
             mSeek.setProgress((int) (pos * 1000 / dur));
@@ -213,9 +236,7 @@ final class ScreenTwoControls {
         if (dur > 0) {
             pos = Math.min(pos, dur - 1000);
         }
-        android.util.Log.i("CarS2", "seek " + p.getCurrentPosition() + " -> " + pos + " dur " + dur);
         p.seekTo(pos);
-        android.util.Log.i("CarS2", "after seek " + p.getCurrentPosition());
         update();
     }
 
