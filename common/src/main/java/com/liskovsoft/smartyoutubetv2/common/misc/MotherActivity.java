@@ -334,7 +334,9 @@ public class MotherActivity extends FragmentActivity {
         if (sCachedDisplayMetrics == null) {
             // NOTE: Don't replace with getResources().getDisplayMetrics(). Shows wrong metrics here!
             DisplayMetrics displayMetrics = new DisplayMetrics();
-            getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+            // Car build: size from the whole screen, not the window. Otherwise opening in split-screen
+            // caches a small scale and every card stays tiny after going back to full screen.
+            getWindowManager().getDefaultDisplay().getRealMetrics(displayMetrics);
             float uiScale = MainUIData.instance(context).getUIScale();
             // Take into the account screen orientation (e.g. when running on phone)
             int widthPixels = Math.max(displayMetrics.widthPixels, displayMetrics.heightPixels);

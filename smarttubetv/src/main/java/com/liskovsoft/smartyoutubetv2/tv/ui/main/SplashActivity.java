@@ -65,6 +65,15 @@ public class SplashActivity extends MotherActivity implements SplashView {
 
     @Override
     public void finishView() {
+        // Car build: close a moment later, so the next screen is already up in the same window.
+        // Closing at once empties the split-screen side and Android drops the split.
+        getWindow().getDecorView().postDelayed(this::finishNow, 1500);
+    }
+
+    private void finishNow() {
+        if (isFinishing()) {
+            return;
+        }
         try {
             finish();
         } catch (NullPointerException e) {
