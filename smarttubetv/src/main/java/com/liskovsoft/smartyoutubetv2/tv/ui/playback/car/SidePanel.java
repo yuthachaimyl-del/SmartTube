@@ -102,7 +102,7 @@ public final class SidePanel {
         title.setText(titleText);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(20));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(32));
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         mHeader = header;
         mColumn = column;
@@ -110,9 +110,9 @@ public final class SidePanel {
         close.setText("✕");
         close.setTextColor(Color.WHITE);
         close.setGravity(Gravity.CENTER);
-        close.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(24));
+        close.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(34));
         close.setOnClickListener(v -> close());
-        header.addView(close, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        header.addView(close, new LinearLayout.LayoutParams(dp(64), dp(64)));
         column.addView(header);
 
         if (tabs != null) {
@@ -127,14 +127,14 @@ public final class SidePanel {
                 TextView chip = new TextView(vc);
                 chip.setText(names[i]);
                 chip.setTextColor(Color.WHITE);
-                chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
+                chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
                 chip.setGravity(Gravity.CENTER);
-                chip.setPadding(dp(16), 0, dp(16), 0);
+                chip.setPadding(dp(20), 0, dp(20), 0);
                 chip.setOnClickListener(v -> {
                     selectTab(index);
                     tabs.onTabSelected(index, this);
                 });
-                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(58));
                 clp.rightMargin = dp(8);
                 strip.addView(chip, clp);
                 mTabViews.add(chip);
@@ -153,7 +153,7 @@ public final class SidePanel {
         mPanel.addView(column);
         mEmpty = new TextView(vc);
         mEmpty.setTextColor(0xFFAAAAAA);
-        mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
+        mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         mEmpty.setGravity(Gravity.CENTER);
         mEmpty.setVisibility(View.GONE);
         mPanel.addView(mEmpty, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -191,9 +191,9 @@ public final class SidePanel {
         open.setText("🔍");
         open.setTextColor(Color.WHITE);
         open.setGravity(Gravity.CENTER);
-        open.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(24));
+        open.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(34));
         mSearchOpen = open;
-        mHeader.addView(open, mHeader.getChildCount() - 1, new LinearLayout.LayoutParams(dp(56), dp(52)));
+        mHeader.addView(open, mHeader.getChildCount() - 1, new LinearLayout.LayoutParams(dp(68), dp(64)));
         if (mCtx == mActivity) {
             // main screen: the search box lives in its own small window, so the player can't take its keys or focus
             open.setOnClickListener(v -> openSearchDialog());
@@ -215,7 +215,7 @@ public final class SidePanel {
         mSearchBox.setHint("ค้นหาวิดีโอ…");
         mSearchBox.setHintTextColor(0xFF9A9A9A);
         mSearchBox.setTextColor(Color.WHITE);
-        mSearchBox.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
+        mSearchBox.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(28));
         mSearchBox.setSingleLine(true);
         mSearchBox.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
         mSearchBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
@@ -230,14 +230,14 @@ public final class SidePanel {
             submitSearch();
             return true;
         });
-        row.addView(mSearchBox, new LinearLayout.LayoutParams(0, dp(48), 1));
+        row.addView(mSearchBox, new LinearLayout.LayoutParams(0, dp(60), 1));
 
         mMic = chipButton(vc, "🎤", v -> listen());
-        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(56), dp(48));
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(68), dp(60));
         mlp.leftMargin = dp(8);
         row.addView(mMic, mlp);
         TextView go = chipButton(vc, "ค้นหา", v -> submitSearch());
-        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(60));
         glp.leftMargin = dp(8);
         row.addView(go, glp);
         return row;
@@ -291,7 +291,7 @@ public final class SidePanel {
         TextView b = new TextView(vc);
         b.setText(text);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(14), 0, dp(14), 0);
         GradientDrawable bg = new GradientDrawable();
@@ -570,19 +570,19 @@ public final class SidePanel {
             mThumb = new ImageView(parent.getContext());
             mThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             mThumb.setBackgroundColor(0xFF2A2A2A);
-            row.addView(mThumb, new LinearLayout.LayoutParams(dp(208), dp(117)));
+            row.addView(mThumb, new LinearLayout.LayoutParams(dp(250), dp(140)));
 
             LinearLayout text = new LinearLayout(parent.getContext());
             text.setOrientation(LinearLayout.VERTICAL);
             text.setPadding(dp(12), 0, 0, 0);
             mTitle = new TextView(parent.getContext());
             mTitle.setTextColor(Color.WHITE);
-            mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(21));
+            mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(34));
             mTitle.setMaxLines(2);
             mTitle.setEllipsize(TextUtils.TruncateAt.END);
             mSub = new TextView(parent.getContext());
             mSub.setTextColor(0xFFAAAAAA);
-            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
+            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
             mSub.setMaxLines(2);
             mSub.setEllipsize(TextUtils.TruncateAt.END);
             text.addView(mTitle);
