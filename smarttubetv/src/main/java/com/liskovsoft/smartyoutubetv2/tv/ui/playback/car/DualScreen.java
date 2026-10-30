@@ -395,6 +395,8 @@ public final class DualScreen {
         }
     };
 
+    private int mTargetDisplayId = -1;
+
     private void show(Display display) {
         mShowing = true;
         sCurrent = this;
@@ -402,6 +404,13 @@ public final class DualScreen {
         display.getRealMetrics(m);
         android.widget.Toast.makeText(mActivity, "จอ 2: " + display.getName() + "  " + m.widthPixels + "×"
                 + m.heightPixels + "  " + m.densityDpi + "dpi", android.widget.Toast.LENGTH_LONG).show();
+        // Split screen: Android puts a new app screen into the other half of the MAIN screen
+        // instead of on the second display. Use a window on the second display then.
+        if (mActivity.isInMultiWindowMode()) {
+            showPresentation(display);
+            return;
+        }
+        mTargetDisplayId = display.getDisplayId();
         // An app screen on the second display (like YouTube there): it can hide that screen's toolbar.
         try {
             android.content.Intent i = new android.content.Intent(mActivity, ScreenTwoActivity.class)
@@ -433,6 +442,20 @@ public final class DualScreen {
     /** The app screen on the second display is up: give it the video UI. */
     ScreenTwoUi attachActivity(ScreenTwoActivity a) {
         if (!mShowing || mPresentation != null) {
+            return null;
+        }
+        int shownOn = a.getWindowManager().getDefaultDisplay().getDisplayId();
+        if (shownOn != mTargetDisplayId) {
+            // the system opened it somewhere else (e.g. the main screen): a window on the second display instead
+            mMainVideo.removeCallbacks(mActivityTimeout);
+            Display d = secondDisplay();
+            if (d != null) {
+                mMainVideo.post(() -> {
+                    if (mShowing && mPresentation == null && mScreenActivity == null) {
+                        showPresentation(d);
+                    }
+                });
+            }
             return null;
         }
         mMainVideo.removeCallbacks(mActivityTimeout);
