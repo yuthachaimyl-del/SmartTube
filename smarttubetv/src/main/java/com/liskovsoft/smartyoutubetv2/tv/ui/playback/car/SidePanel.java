@@ -396,8 +396,24 @@ public final class SidePanel {
         }
     }
 
+    /**
+     * Sizes follow the screen itself, not the player's shrunken layout: the lists must stay readable
+     * at arm's length in the car (the player's controls are drawn smaller on purpose).
+     */
+    private float mDensity;
+
     private int dp(float v) {
-        return Math.round(v * mCtx.getResources().getDisplayMetrics().density);
+        if (mDensity <= 0) {
+            float d = 0;
+            try {
+                android.util.DisplayMetrics m = new android.util.DisplayMetrics();
+                ((android.view.WindowManager) mCtx.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(m);
+                d = m.density;
+            } catch (Exception ignored) {
+            }
+            mDensity = d > 0 ? d : mCtx.getResources().getDisplayMetrics().density;
+        }
+        return Math.round(v * mDensity);
     }
 
     public boolean isOpen() {
@@ -534,7 +550,7 @@ public final class SidePanel {
             super(new LinearLayout(parent.getContext()));
             LinearLayout row = (LinearLayout) itemView;
             row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setPadding(dp(12), dp(8), dp(12), dp(8));
+            row.setPadding(dp(12), dp(10), dp(12), dp(10));
             row.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
             row.setBackground(pressable());
@@ -542,19 +558,19 @@ public final class SidePanel {
             mThumb = new ImageView(parent.getContext());
             mThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             mThumb.setBackgroundColor(0xFF2A2A2A);
-            row.addView(mThumb, new LinearLayout.LayoutParams(dp(176), dp(99)));
+            row.addView(mThumb, new LinearLayout.LayoutParams(dp(208), dp(117)));
 
             LinearLayout text = new LinearLayout(parent.getContext());
             text.setOrientation(LinearLayout.VERTICAL);
             text.setPadding(dp(12), 0, 0, 0);
             mTitle = new TextView(parent.getContext());
             mTitle.setTextColor(Color.WHITE);
-            mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(17));
+            mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(21));
             mTitle.setMaxLines(2);
             mTitle.setEllipsize(TextUtils.TruncateAt.END);
             mSub = new TextView(parent.getContext());
             mSub.setTextColor(0xFFAAAAAA);
-            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(14));
+            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
             mSub.setMaxLines(2);
             mSub.setEllipsize(TextUtils.TruncateAt.END);
             text.addView(mTitle);

@@ -725,7 +725,7 @@ public final class DualScreen {
 
     /** Like the YouTube app in full screen: the second screen's own toolbar / bars hide (a swipe from the edge shows them). */
     @SuppressWarnings("deprecation")
-    static void goFullScreen(android.view.Window w) {
+    public static void goFullScreen(android.view.Window w) {
         if (w == null) {
             return;
         }
