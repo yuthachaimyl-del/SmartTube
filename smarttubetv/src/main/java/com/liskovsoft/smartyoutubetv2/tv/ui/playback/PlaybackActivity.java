@@ -222,6 +222,49 @@ public class PlaybackActivity extends LeanbackActivity {
         com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.stop(this); // back in front
     }
 
+    // Car build: when the app itself is moved to the second screen (two-finger swipe), the video goes
+    // full screen there like the YouTube app: that screen's toolbar hides (a swipe from the edge shows it).
+    private boolean mCarImmersive;
+
+    @SuppressWarnings("deprecation")
+    private void applyCarImmersive() {
+        android.view.Display d = getWindow().getDecorView().getDisplay();
+        if (d == null) {
+            d = getWindowManager().getDefaultDisplay();
+        }
+        boolean second = d != null && d.getDisplayId() != android.view.Display.DEFAULT_DISPLAY;
+        if (second) {
+            com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen.goFullScreen(getWindow());
+            mCarImmersive = true;
+        } else if (mCarImmersive) {   // back on the main screen: its bars as usual
+            mCarImmersive = false;
+            getWindow().getDecorView().setSystemUiVisibility(0);
+            if (Build.VERSION.SDK_INT >= 30 && getWindow().getInsetsController() != null) {
+                getWindow().getInsetsController().show(android.view.WindowInsets.Type.systemBars());
+            }
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        applyCarImmersive();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            applyCarImmersive();
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        getWindow().getDecorView().post(this::applyCarImmersive);   // moved to the other screen
+    }
+
     @Override
     protected void onDestroy() {
         com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.stop(this);
