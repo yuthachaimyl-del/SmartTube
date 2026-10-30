@@ -211,7 +211,20 @@ public class PlaybackActivity extends LeanbackActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.stop(this); // back in front
+    }
+
+    @Override
+    protected void onDestroy() {
+        com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.stop(this);
+        super.onDestroy();
+    }
+
+    @Override
     public void finishReally() {
+        com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.stop(this);
         super.finishReally();
 
         mPlaybackFragment.onFinish();
@@ -299,6 +312,8 @@ public class PlaybackActivity extends LeanbackActivity {
                     // Ensure to continue a playback
                     mPlaybackFragment.blockEngine(true);
                     getViewManager().blockTop(this);
+                    // Car build: full priority while only the sound plays (no stutter)
+                    com.liskovsoft.smartyoutubetv2.common.misc.BackgroundPlaybackService.start(this);
                     //getViewManager().enableMoveToBack(true);
                 }
                 break;

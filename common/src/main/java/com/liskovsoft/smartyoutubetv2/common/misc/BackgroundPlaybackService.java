@@ -23,19 +23,34 @@ public class BackgroundPlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
 
+        // Car build: keeps the app at full priority while it plays sound in the background
+        // (the head unit throttles background apps -> the sound stutters).
         if (Build.VERSION.SDK_INT >= 26) {
-            String CHANNEL_ID = "my_channel_01";
+            String CHANNEL_ID = "car_background_sound";
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                    "Channel human readable title",
-                    NotificationManager.IMPORTANCE_DEFAULT);
+                    "เล่นเสียงเบื้องหลัง",
+                    NotificationManager.IMPORTANCE_LOW);
+            channel.setShowBadge(false);
 
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("")
-                    .setContentText("").build();
+                    .setSmallIcon(getApplicationInfo().icon)
+                    .setContentTitle("SmartTube")
+                    .setContentText("กำลังเล่นเสียง")
+                    .setOngoing(true)
+                    .build();
 
-            startForeground(1, notification);
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+                } else {
+                    startForeground(1, notification);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "startForeground: %s", e.getMessage());
+                stopSelf();
+            }
         }
     }
 
@@ -58,7 +73,11 @@ public class BackgroundPlaybackService extends Service {
         if (Build.VERSION.SDK_INT >= 26) {
             // Fake service to prevent the app from destroying
             Intent serviceIntent = new Intent(context, BackgroundPlaybackService.class);
-            context.startForegroundService(serviceIntent);
+            try {
+                context.startForegroundService(serviceIntent);
+            } catch (Exception e) { // not allowed from the background on new Android versions
+                Log.e(TAG, "start: %s", e.getMessage());
+            }
         }
     }
 
@@ -66,7 +85,11 @@ public class BackgroundPlaybackService extends Service {
         if (Build.VERSION.SDK_INT >= 26) {
             // Fake service to prevent the app from destroying
             Intent serviceIntent = new Intent(context, BackgroundPlaybackService.class);
-            context.stopService(serviceIntent);
+            try {
+                context.stopService(serviceIntent);
+            } catch (Exception e) {
+                Log.e(TAG, "stop: %s", e.getMessage());
+            }
         }
     }
 }

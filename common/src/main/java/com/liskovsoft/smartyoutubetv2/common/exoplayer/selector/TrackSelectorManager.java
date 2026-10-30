@@ -567,9 +567,7 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             return;
         }
 
-        boolean disabled = renderer.isDisabled
-                || (rendererIndex == RENDERER_INDEX_VIDEO && com.liskovsoft.smartyoutubetv2.common.car.CarState.sAudioOnly);
-        mTrackSelector.setParameters(mTrackSelector.buildUponParameters().setRendererDisabled(rendererIndex, disabled));
+        mTrackSelector.setParameters(mTrackSelector.buildUponParameters().setRendererDisabled(rendererIndex, renderer.isDisabled));
 
         MediaTrack selectedTrack = renderer.selectedTrack;
 

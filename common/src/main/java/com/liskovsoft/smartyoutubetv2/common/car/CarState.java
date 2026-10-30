@@ -5,9 +5,6 @@ public final class CarState {
     /** True while the video plays on the second screen: the main screen keeps the controls up. */
     public static volatile boolean sKeepControls;
 
-    /** True while the app plays sound only in the background: the video track isn't loaded or decoded. */
-    public static volatile boolean sAudioOnly;
-
     private CarState() {
     }
 }

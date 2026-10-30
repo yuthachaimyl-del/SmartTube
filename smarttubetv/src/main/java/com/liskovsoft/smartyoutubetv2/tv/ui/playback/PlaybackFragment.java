@@ -318,13 +318,6 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     public void onStart() {
         super.onStart();
 
-        if (getView() != null) {
-            getView().removeCallbacks(mCarAudioOnly);
-        }
-        if (com.liskovsoft.smartyoutubetv2.common.car.CarState.sAudioOnly) {
-            setCarAudioOnly(false); // picture back
-        }
-
         // Fix controls pop-up on Activity start/resume.
         // Should be called on earlier stage.
         hideControlsOverlay(true);
@@ -360,33 +353,6 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (Util.SDK_INT > 23) {
             maybeReleasePlayer();
-        }
-
-        if (isEngineBlocked() && mPlayer != null && getView() != null) {
-            // sound only in the background: once the picture is gone, stop loading and decoding the video
-            getView().removeCallbacks(mCarAudioOnly);
-            getView().postDelayed(mCarAudioOnly, 1_500);
-        }
-    }
-
-    // Car build: background = sound only (less data and CPU, no stutter); the video comes back on return
-    private DefaultTrackSelector mCarTrackSelector;
-    private final Runnable mCarAudioOnly = () -> setCarAudioOnly(true);
-
-    private void setCarAudioOnly(boolean audioOnly) {
-        com.liskovsoft.smartyoutubetv2.common.car.CarState.sAudioOnly = audioOnly;
-        if (mPlayer == null || mCarTrackSelector == null) {
-            return;
-        }
-        try {
-            for (int i = 0; i < mPlayer.getRendererCount(); i++) {
-                if (mPlayer.getRendererType(i) == com.google.android.exoplayer2.C.TRACK_TYPE_VIDEO
-                        && mCarTrackSelector.getParameters().getRendererDisabled(i) != audioOnly) {
-                    mCarTrackSelector.setParameters(mCarTrackSelector.buildUponParameters().setRendererDisabled(i, audioOnly));
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "audio only: " + e.getMessage());
         }
     }
 
@@ -774,7 +740,6 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality.init(getContext());
         DefaultTrackSelector trackSelector = new RestoreTrackSelector(new AdaptiveTrackSelection.Factory());
         mExoPlayerController.setTrackSelector(trackSelector);
-        mCarTrackSelector = trackSelector;
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
         mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
