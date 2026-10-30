@@ -6,7 +6,8 @@
               android:layout_width="wrap_content"
               android:layout_height="wrap_content"
               android:layout_gravity="center_vertical|end"
-              android:orientation="horizontal">
+              android:paddingEnd="72dp"
+              android:orientation="horizontal"> <!-- car build: room for the on-screen Back button -->
     <!-- Global clock -->
     <LinearLayout android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
