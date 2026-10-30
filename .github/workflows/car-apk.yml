@@ -25,3 +25,7 @@ jobs:
         with:
           name: smarttube-car-apk
           path: smarttubetv/build/outputs/apk/ststable/debug/*arm64*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smarttube-car-apk-x86_64
+          path: smarttubetv/build/outputs/apk/ststable/debug/*x86_64*.apk
