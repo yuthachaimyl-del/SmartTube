@@ -578,12 +578,13 @@ public final class SidePanel {
             mTitle = new TextView(parent.getContext());
             mTitle.setTextColor(Color.WHITE);
             mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(34));
-            mTitle.setMaxLines(2);
+            mTitle.setMaxLines(3);
+            mTitle.setLineSpacing(0, 0.92f);
             mTitle.setEllipsize(TextUtils.TruncateAt.END);
             mSub = new TextView(parent.getContext());
             mSub.setTextColor(0xFFAAAAAA);
             mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
-            mSub.setMaxLines(2);
+            mSub.setMaxLines(1);
             mSub.setEllipsize(TextUtils.TruncateAt.END);
             text.addView(mTitle);
             text.addView(mSub);
