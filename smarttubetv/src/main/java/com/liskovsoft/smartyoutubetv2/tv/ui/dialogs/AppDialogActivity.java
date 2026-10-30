@@ -96,6 +96,63 @@ public class AppDialogActivity extends MotherActivity {
         return false;
     }
 
+    // Car build: tapping anywhere outside the dialog panel closes it (like a phone app)
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && isOutsidePanel(event)) {
+            finish();
+            return true;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private boolean isOutsidePanel(android.view.MotionEvent event) {
+        android.view.View root = mFragment != null ? mFragment.getView() : null;
+        if (root == null || root.getWidth() == 0) {
+            return false;
+        }
+        android.view.View panel = findPanel(root, root.getWidth(), root.getHeight());
+        if (panel == null) {
+            return false;
+        }
+        int[] loc = new int[2];
+        panel.getLocationOnScreen(loc);
+        float x = event.getRawX(), y = event.getRawY();
+        boolean inside = x >= loc[0] && x <= loc[0] + panel.getWidth() && y >= loc[1] && y <= loc[1] + panel.getHeight();
+        if (inside) {
+            return false;
+        }
+        // keep the on-screen Back button working
+        android.view.View back = getWindow().getDecorView().findViewWithTag("car_back_button");
+        if (back != null && back.isShown()) {
+            back.getLocationOnScreen(loc);
+            if (x >= loc[0] && x <= loc[0] + back.getWidth() && y >= loc[1] && y <= loc[1] + back.getHeight()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The visible dialog panel: the largest visible view that is narrower than the screen. */
+    private static android.view.View findPanel(android.view.View v, int rootW, int rootH) {
+        if (v.getVisibility() != android.view.View.VISIBLE) {
+            return null;
+        }
+        if (v.getWidth() > 0 && v.getWidth() < rootW * 0.9f && v.getHeight() > rootH * 0.3f) {
+            return v;
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = g.getChildCount() - 1; i >= 0; i--) {
+                android.view.View found = findPanel(g.getChildAt(i), rootW, rootH);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     @Override
     public void finish() {
         // NOTE: Fragment's onDestroy/onDestroyView are not reliable way to catch dialog finish
