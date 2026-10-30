@@ -204,6 +204,55 @@ public class MotherActivity extends FragmentActivity {
         super.attachBaseContext(contextWrapper);
     }
 
+    // ---- Car build: on-screen Back button for touch head units (no remote, nav bar hidden in fullscreen)
+
+    @Override
+    protected void onPostCreate(@Nullable Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
+        addCarBackButton();
+    }
+
+    private void addCarBackButton() {
+        if (!getPackageManager().hasSystemFeature("android.hardware.touchscreen")) {
+            return; // TVs with a remote keep the original UI
+        }
+        android.view.ViewGroup content = findViewById(android.R.id.content);
+        if (content == null || content.findViewWithTag("car_back_button") != null) {
+            return;
+        }
+        float density = getResources().getDisplayMetrics().density;
+        int size = Math.round(64 * density);
+        int margin = Math.round(10 * density);
+
+        android.widget.TextView back = new android.widget.TextView(this);
+        back.setTag("car_back_button");
+        back.setText("\u2039"); // ‹
+        back.setTextColor(0xFFFFFFFF);
+        back.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 40);
+        back.setGravity(android.view.Gravity.CENTER);
+        back.setIncludeFontPadding(false);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        bg.setColor(0x99000000);
+        bg.setStroke(Math.round(1.5f * density), 0x66FFFFFF);
+        back.setBackground(bg);
+        back.setAlpha(0.85f);
+        back.setFocusable(false); // never steals D-pad focus
+        back.setContentDescription("Back");
+        back.setOnClickListener(v -> {
+            // behave exactly like the remote's Back key
+            dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK));
+            dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK));
+        });
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(size, size,
+                android.view.Gravity.TOP | android.view.Gravity.END);
+        lp.setMargins(margin, margin, margin, margin);
+        content.addView(back, lp);
+        if (VERSION.SDK_INT >= 21) {
+            back.setElevation(20 * density);
+        }
+    }
+
     @Override
     protected void onResume() {
         mIsBackPressed = false;
