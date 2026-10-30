@@ -33,6 +33,18 @@ import com.google.android.exoplayer2.video.VideoListener;
 public final class DualScreen {
     private static boolean sEnabled;
 
+    /** What the second screen can pick from (same lists as the main screen). */
+    public interface Library {
+        java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> getSuggestions();
+        void play(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video);
+    }
+
+    private Library mLibrary;
+
+    public void setLibrary(Library library) {
+        mLibrary = library;
+    }
+
     private final Activity mActivity;
     private final ViewGroup mRoot;           // player fragment root
     private final View mMainVideo;           // main screen SurfaceView / TextureView
@@ -416,14 +428,115 @@ public final class DualScreen {
 
     private final class VideoPresentation extends Presentation {
         private AspectRatioFrameLayout mFrame;
+        private FrameLayout mRootView;
         private ScreenTwoControls mControls;
+        private SidePanel mNext;
+        private SidePanel mMenu;
+        private io.reactivex.disposables.Disposable mMenuLoad;
+        private int mMenuIndex = -1;
 
         @Override
         protected void onStop() {
             if (mControls != null) {
                 mControls.release();
             }
+            if (mMenuLoad != null) {
+                mMenuLoad.dispose();
+            }
             super.onStop();
+        }
+
+        private void buildPanels() {
+            SidePanel.Host nextHost = new SidePanel.Host() {
+                @Override public java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> getSuggestions() {
+                    return mLibrary != null ? mLibrary.getSuggestions() : null;
+                }
+                @Override public void onVideoClicked(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video) {
+                    if (mLibrary != null) {
+                        mLibrary.play(video);
+                    }
+                }
+                @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
+                    VideoPresentation.this.setVideoFraction(fraction, videoOnRight);
+                }
+            };
+            SidePanel.Host menuHost = new SidePanel.Host() {
+                @Override public java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> getSuggestions() {
+                    return null;
+                }
+                @Override public void onVideoClicked(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video) {
+                    nextHost.onVideoClicked(video);
+                }
+                @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
+                    VideoPresentation.this.setVideoFraction(fraction, videoOnRight);
+                }
+            };
+            mNext = new SidePanel(mActivity, getContext(), mRootView, nextHost, false, "วิดีโอถัดไป", null);
+            mMenu = new SidePanel(mActivity, getContext(), mRootView, menuHost, true, "SmartTube",
+                    new SidePanel.Tabs() {
+                        @Override public String[] titles() {
+                            return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES;
+                        }
+                        @Override public void onTabSelected(int index, SidePanel panel) {
+                            loadMenu(index);
+                        }
+                    });
+        }
+
+        private void loadMenu(int index) {
+            if (mMenuLoad != null) {
+                mMenuLoad.dispose();
+            }
+            mMenuIndex = index;
+            mMenu.setItems(null, "กำลังโหลด…");
+            mMenuLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.load(index, (videos, error) -> {
+                if (mMenu != null && mMenuIndex == index) {
+                    mMenu.setItems(videos, error != null ? error : "ไม่มีวิดีโอ");
+                }
+            });
+        }
+
+        private final ScreenTwoControls.Panels mPanels = new ScreenTwoControls.Panels() {
+            @Override public void openNext() {
+                if (mMenu.isOpen()) {
+                    mMenu.close();
+                }
+                mNext.open();
+            }
+            @Override public void openMenu() {
+                if (mNext.isOpen()) {
+                    mNext.close();
+                }
+                mMenu.open();
+                if (mMenuIndex < 0) {
+                    loadMenu(0);
+                }
+            }
+            @Override public boolean anyOpen() {
+                return mNext.isOpen() || mMenu.isOpen();
+            }
+            @Override public void closeAll() {
+                mNext.close();
+                mMenu.close();
+            }
+        };
+
+        /** A list is open: the video moves to one side (fit), back to the full screen when it closes. */
+        void setVideoFraction(float fraction, boolean videoOnRight) {
+            if (mFrame == null || mRootView == null) {
+                return;
+            }
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mFrame.getLayoutParams();
+            if (fraction >= 1f) {
+                lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                lp.gravity = Gravity.CENTER;
+                applyScale();
+            } else {
+                lp.width = Math.round(mRootView.getWidth() * fraction);
+                lp.gravity = (videoOnRight ? Gravity.END : Gravity.START) | Gravity.CENTER_VERTICAL;
+                mFrame.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            }
+            mFrame.setLayoutParams(lp);
         }
 
         VideoPresentation(Context outer, Display display) {
@@ -434,6 +547,7 @@ public final class DualScreen {
         protected void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
             FrameLayout root = new FrameLayout(getContext());
+            mRootView = root;
             root.setBackgroundColor(Color.BLACK);
             mFrame = new AspectRatioFrameLayout(getContext());
             applyScale();
@@ -443,7 +557,8 @@ public final class DualScreen {
             root.addView(mFrame, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
             setContentView(root);
-            mControls = new ScreenTwoControls(getContext(), mActivity, root, () -> mPlayer);
+            buildPanels();
+            mControls = new ScreenTwoControls(getContext(), mActivity, root, () -> mPlayer, mPanels);
             mControls.showFor(); // show once so it's clear the second screen can be touched
             if (mPlayer != null) {
                 Format f = mPlayer.getVideoFormat();
@@ -474,7 +589,8 @@ public final class DualScreen {
         }
 
         void applyScale() {
-            if (mFrame != null) {
+            if (mFrame != null && (mFrame.getLayoutParams() == null
+                    || mFrame.getLayoutParams().width == ViewGroup.LayoutParams.MATCH_PARENT)) { // not while a list is open
                 mFrame.setResizeMode(sScaleMode == SCALE_ZOOM ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         : sScaleMode == SCALE_STRETCH ? AspectRatioFrameLayout.RESIZE_MODE_FILL
                         : AspectRatioFrameLayout.RESIZE_MODE_FIT);

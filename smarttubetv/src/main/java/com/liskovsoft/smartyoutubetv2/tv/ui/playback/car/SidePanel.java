@@ -1,6 +1,7 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.playback.car;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -45,6 +46,7 @@ public final class SidePanel {
     public static final float VIDEO_FRACTION = 0.62f;
 
     private final Activity mActivity;
+    private final Context mCtx; // views + sizes: the activity, or the second screen's context
     private final Host mHost;
     private final FrameLayout mPanel;
     private final Adapter mAdapter = new Adapter();
@@ -58,30 +60,38 @@ public final class SidePanel {
     }
 
     public SidePanel(Activity activity, ViewGroup root, Host host, boolean left, String titleText, Tabs tabs) {
+        this(activity, activity, root, host, left, titleText, tabs);
+    }
+
+    /** viewContext: where the panel is shown (the second screen has its own size and density). */
+    public SidePanel(Activity activity, Context viewContext, ViewGroup root, Host host, boolean left, String titleText, Tabs tabs) {
         mActivity = activity;
+        mCtx = viewContext;
         mHost = host;
         mLeft = left;
+        boolean mainScreen = viewContext == activity;
+        Context vc = viewContext; // all views of the panel are made for the screen it is shown on
 
-        mPanel = new FrameLayout(activity);
+        mPanel = new FrameLayout(vc);
         mPanel.setBackgroundColor(0xF2101010);
         mPanel.setVisibility(View.GONE);
         mPanel.setClickable(true);
         mPanel.setElevation(dp(18));
 
-        LinearLayout column = new LinearLayout(activity);
+        LinearLayout column = new LinearLayout(vc);
         column.setOrientation(LinearLayout.VERTICAL);
 
-        LinearLayout header = new LinearLayout(activity);
+        LinearLayout header = new LinearLayout(vc);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(8), left ? dp(8) : dp(96), dp(4)); // clear of the on-screen Back button
-        TextView title = new TextView(activity);
+        header.setPadding(dp(16), dp(8), left || !mainScreen ? dp(8) : dp(96), dp(4)); // clear of the on-screen Back button
+        TextView title = new TextView(vc);
         title.setText(titleText);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(20));
         header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView close = new TextView(activity);
+        TextView close = new TextView(vc);
         close.setText("✕");
         close.setTextColor(Color.WHITE);
         close.setGravity(Gravity.CENTER);
@@ -91,15 +101,15 @@ public final class SidePanel {
         column.addView(header);
 
         if (tabs != null) {
-            android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(activity);
+            android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(vc);
             scroll.setHorizontalScrollBarEnabled(false);
-            LinearLayout strip = new LinearLayout(activity);
+            LinearLayout strip = new LinearLayout(vc);
             strip.setOrientation(LinearLayout.HORIZONTAL);
             strip.setPadding(dp(10), 0, dp(10), dp(6));
             String[] names = tabs.titles();
             for (int i = 0; i < names.length; i++) {
                 final int index = i;
-                TextView chip = new TextView(activity);
+                TextView chip = new TextView(vc);
                 chip.setText(names[i]);
                 chip.setTextColor(Color.WHITE);
                 chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
@@ -119,14 +129,14 @@ public final class SidePanel {
             selectTab(0);
         }
 
-        RecyclerView list = new RecyclerView(activity);
-        list.setLayoutManager(new LinearLayoutManager(activity));
+        RecyclerView list = new RecyclerView(vc);
+        list.setLayoutManager(new LinearLayoutManager(vc));
         list.setAdapter(mAdapter);
         list.setFocusable(false);
         column.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         mPanel.addView(column);
-        mEmpty = new TextView(activity);
+        mEmpty = new TextView(vc);
         mEmpty.setTextColor(0xFFAAAAAA);
         mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(16));
         mEmpty.setGravity(Gravity.CENTER);
@@ -155,7 +165,7 @@ public final class SidePanel {
     }
 
     private int dp(float v) {
-        return Math.round(v * mActivity.getResources().getDisplayMetrics().density);
+        return Math.round(v * mCtx.getResources().getDisplayMetrics().density);
     }
 
     public boolean isOpen() {
@@ -165,7 +175,7 @@ public final class SidePanel {
     public void open() {
         List<Video> items = mHost.getSuggestions();
         if (!mLeft && (items == null || items.isEmpty())) {
-            android.widget.Toast.makeText(mActivity, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(mCtx, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
         mAdapter.set(items);

@@ -307,6 +307,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 && getSurfaceView() != null) {
             mDualScreen = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen(
                     getActivity(), (android.view.ViewGroup) getView(), getSurfaceView());
+            mDualScreen.setLibrary(new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.DualScreen.Library() {
+                @Override public java.util.List<Video> getSuggestions() { return collectSuggestions(); }
+                @Override public void play(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
+            });
         }
     }
 
