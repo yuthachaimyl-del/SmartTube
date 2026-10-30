@@ -304,14 +304,13 @@ public abstract class SearchTagsFragmentBase extends SearchSupportFragment
     @SuppressWarnings("deprecation")
     private final SpeechRecognitionCallback mDefaultCallback = () -> {
         if (isAdded()) {
-            if (PermissionHelpers.hasMicPermissions(getContext())) {
-                MessageHelpers.showMessage(getContext(), R.string.disable_mic_permission);
-            }
-
             try {
                 startActivityForResult(getRecognizerIntent(), REQUEST_SPEECH);
             } catch (ActivityNotFoundException e) {
                 Log.e(TAG, "Cannot find activity for speech recognizer", e);
+                // No Google voice app: switch to the built-in recognizer from the next search on
+                getSearchData().setSpeechRecognizerType(SearchData.SPEECH_RECOGNIZER_SYSTEM);
+                MessageHelpers.showMessage(getContext(), "Install the Google app for voice search");
             } catch (NullPointerException e) {
                 Log.e(TAG, "Speech recognizer can't obtain applicationInfo", e);
             }

@@ -228,6 +228,54 @@ public class SurfacePlaybackFragment extends PlaybackSupportFragment {
         return mVideoSurfaceRoot.getZoom() * widthRatio / 100;
     }
 
+    // ---- Car build: suggestions in a right-side panel instead of covering the video
+
+    /** Part of the screen width the video keeps while the suggestions panel is open. */
+    private static final float SIDE_VIDEO_FRACTION = 0.62f;
+    private static final int SIDE_PANEL_COLOR = 0xEE101010;
+    private boolean mSideMode;
+
+    /** Only on wide landscape screens (car head units, e.g. 1920x720); normal TVs keep the original overlay. */
+    protected boolean isSidePanelScreen() {
+        View root = getView();
+        return root != null && root.getHeight() > 0 && root.getWidth() / (float) root.getHeight() >= 1.9f;
+    }
+
+    /**
+     * Shrinks the video to the left and moves the controls/suggestions dock to the right,
+     * so the suggestions no longer cover the picture. {@code false} restores full screen.
+     */
+    protected void setSideMode(boolean enabled) {
+        View root = getView();
+        if (root == null || mVideoSurfaceRoot == null || mSideMode == enabled) {
+            return;
+        }
+        mSideMode = enabled;
+
+        int videoWidth = Math.round(root.getWidth() * SIDE_VIDEO_FRACTION);
+
+        FrameLayout.LayoutParams videoParams = (FrameLayout.LayoutParams) mVideoSurfaceRoot.getLayoutParams();
+        videoParams.width = enabled ? videoWidth : ViewGroup.LayoutParams.MATCH_PARENT;
+        videoParams.gravity = enabled ? (Gravity.START | Gravity.CENTER_VERTICAL) : Gravity.CENTER;
+        mVideoSurfaceRoot.setLayoutParams(videoParams);
+
+        scaleSubtitles(enabled ? videoWidth : ViewGroup.LayoutParams.MATCH_PARENT,
+                enabled ? mSubtitlesPadding / 3 : mSubtitlesPadding,
+                enabled ? Gravity.START : Gravity.CENTER);
+
+        View dock = root.findViewById(com.liskovsoft.smartyoutubetv2.tv.R.id.playback_controls_dock);
+        if (dock != null) {
+            FrameLayout.LayoutParams dockParams = (FrameLayout.LayoutParams) dock.getLayoutParams();
+            dockParams.leftMargin = enabled ? videoWidth : 0;
+            dock.setLayoutParams(dockParams);
+            dock.setBackgroundColor(enabled ? SIDE_PANEL_COLOR : 0);
+        }
+    }
+
+    protected boolean isSideMode() {
+        return mSideMode;
+    }
+
     private float calculateAspectRatio() {
         return (mAspectRatio == 0 ? mVideoAspectRatio : mAspectRatio) * mPixelRatio;
     }

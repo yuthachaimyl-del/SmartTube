@@ -653,6 +653,10 @@ public class SearchSupportFragment extends Fragment {
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        // Car build: always ask Google's recognizer for Thai (it still understands English words)
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "th-TH");
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "th-TH");
+        recognizerIntent.putExtra("android.speech.extra.PREFER_OFFLINE", false);
         if (mSearchBar != null && mSearchBar.getHint() != null) {
             recognizerIntent.putExtra(RecognizerIntent.EXTRA_PROMPT, mSearchBar.getHint());
         }

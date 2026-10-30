@@ -113,6 +113,9 @@ android {
         }
         // Use same key for release and debug for testing
         debug {
+            // Car build: installs next to the regular SmartTube
+            applicationIdSuffix ".car"
+            versionNameSuffix "-car"
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
             }

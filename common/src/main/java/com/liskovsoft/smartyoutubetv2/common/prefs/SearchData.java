@@ -159,7 +159,7 @@ public class SearchData {
         mIsKeyboardAutoShowEnabled = Helpers.parseBoolean(split, 3, false);
         mIsTempBackgroundModeEnabled = Helpers.parseBoolean(split, 4, false);
         //mIsAltSpeechRecognizerEnabled
-        mSpeechRecognizerType = Helpers.parseInt(split, 6, SPEECH_RECOGNIZER_SYSTEM);
+        mSpeechRecognizerType = Helpers.parseInt(split, 6, SPEECH_RECOGNIZER_INTENT); // car: Google voice like the phone
         mIsTrendingSearchesEnabled = Helpers.parseBoolean(split, 7, true);
         mIsSearchHistoryDisabled = Helpers.parseBoolean(split, 8, false);
         mIsPopularSearchesDisabled = Helpers.parseBoolean(split, 9, false);

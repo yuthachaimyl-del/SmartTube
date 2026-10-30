@@ -187,9 +187,13 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
      * Update background depending what's shown: controls or suggestions
      */
     private void updatePlayerBackground() {
+        // Car build: on wide screens the suggestions go to a right-side panel and the video stays visible
+        boolean sidePanel = isOverlayShown() && isSuggestionsShown() && isSidePanelScreen();
         if (isOverlayShown()) {
-            setBackgroundResource(isSuggestionsShown() ? R.drawable.player_background_suggestions : R.drawable.player_background_controls);
+            setBackgroundResource(sidePanel ? android.R.color.transparent :
+                    isSuggestionsShown() ? R.drawable.player_background_suggestions : R.drawable.player_background_controls);
         }
+        setSideMode(sidePanel);
     }
 
     // NOTE: depending of SDK version Start/Stop may be called with delay (SDK_INT > 23) or not called at all (PIP/Dialogs)!
@@ -479,6 +483,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     private void createPlayer() {
         // Use default or pass your bandwidthMeter here: bandwidthMeter = new DefaultBandwidthMeter.Builder(getContext()).build()
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality.init(getContext());
         DefaultTrackSelector trackSelector = new RestoreTrackSelector(new AdaptiveTrackSelection.Factory());
         mExoPlayerController.setTrackSelector(trackSelector);
 
@@ -1242,6 +1247,8 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     @Override
     public void hideControlsOverlay(boolean runAnimation) {
         super.hideControlsOverlay(mIsUIAnimationsEnabled);
+
+        setSideMode(false); // car build: video back to full screen
 
         // Do throttle. Called so many times. Rely on boxing because initial state is unknown.
         if (mIsControlsShownPreviously != null && !mIsControlsShownPreviously) {

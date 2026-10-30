@@ -541,6 +541,7 @@ public class EmbedPlayerView extends PlayerView implements PlaybackView {
         }
 
         // Use default or pass your bandwidthMeter here: bandwidthMeter = new DefaultBandwidthMeter.Builder(getContext()).build()
+        com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality.init(getContext());
         DefaultTrackSelector trackSelector = new RestoreTrackSelector(new AdaptiveTrackSelection.Factory());
         mExoPlayerController.setTrackSelector(trackSelector);
 

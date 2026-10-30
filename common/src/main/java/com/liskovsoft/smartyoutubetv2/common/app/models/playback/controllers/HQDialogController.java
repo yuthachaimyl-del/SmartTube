@@ -7,9 +7,11 @@ import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.OptionCatego
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.OptionItem;
 import com.liskovsoft.smartyoutubetv2.common.app.models.playback.ui.UiOptionItem;
 import com.liskovsoft.smartyoutubetv2.common.app.presenters.AppDialogPresenter;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.FormatItem;
 import com.liskovsoft.smartyoutubetv2.common.utils.AppDialogUtil;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -74,11 +76,23 @@ public class HQDialogController extends BasePlayerController {
         List<FormatItem> audioFormats = getPlayer().getAudioFormats();
         String audioFormatsTitle = getContext().getString(R.string.title_audio_formats);
 
+        List<OptionItem> videoOptions = UiOptionItem.from(videoFormats, this::selectFormatOption,
+                getContext().getString(R.string.option_disabled));
+        if (videoOptions != null) {
+            // Car build: auto quality that follows the network speed
+            videoOptions = new ArrayList<>(videoOptions);
+            videoOptions.add(0, UiOptionItem.from("Auto (follows network speed)", optionItem -> {
+                AdaptiveQuality.setEnabled(true);
+                if (getPlayer() != null) {
+                    getPlayer().showOverlay(false);
+                }
+            }, AdaptiveQuality.isEnabled()));
+        }
         addCategoryInt(OptionCategory.from(
                 VIDEO_FORMATS_ID,
                 OptionCategory.TYPE_RADIO_LIST,
                 videoFormatsTitle,
-                UiOptionItem.from(videoFormats, this::selectFormatOption, getContext().getString(R.string.option_disabled))));
+                videoOptions));
         addCategoryInt(OptionCategory.from(
                 AUDIO_FORMATS_ID,
                 OptionCategory.TYPE_RADIO_LIST,
@@ -92,6 +106,9 @@ public class HQDialogController extends BasePlayerController {
         }
 
         FormatItem formatItem = UiOptionItem.toFormat(option);
+        if (formatItem.getType() == FormatItem.TYPE_VIDEO) {
+            AdaptiveQuality.setEnabled(false); // a fixed quality was picked
+        }
         getPlayer().setFormat(formatItem);
         persistFormat(formatItem);
 

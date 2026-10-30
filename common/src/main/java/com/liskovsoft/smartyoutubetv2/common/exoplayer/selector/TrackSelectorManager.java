@@ -571,6 +571,12 @@ public class TrackSelectorManager implements TrackSelectorCallback {
 
         MediaTrack selectedTrack = renderer.selectedTrack;
 
+        if (rendererIndex == RENDERER_INDEX_VIDEO && !renderer.isDisabled && AdaptiveQuality.isEnabled()) {
+            // Car build: auto quality, no fixed override (see RestoreTrackSelector.selectVideoTrack)
+            mTrackSelector.setParameters(mTrackSelector.buildUponParameters().clearSelectionOverrides(rendererIndex));
+            return;
+        }
+
         if (selectedTrack != null && selectedTrack.groupIndex != -1) {
             Log.d(TAG, "Setting override for renderer %s, group %s, track %s...", rendererIndex, selectedTrack.groupIndex, selectedTrack.trackIndex);
 

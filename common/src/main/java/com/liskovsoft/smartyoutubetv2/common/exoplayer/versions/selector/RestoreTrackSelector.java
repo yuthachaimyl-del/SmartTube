@@ -9,6 +9,7 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelection.Definition;
 import com.google.android.exoplayer2.trackselection.TrackSelection.Factory;
 import com.liskovsoft.sharedutils.mylogger.Log;
+import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.TrackSelectorManager;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.track.MediaTrack;
 
@@ -29,6 +30,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
 
     public RestoreTrackSelector(Factory trackSelectionFactory) {
         super(trackSelectionFactory);
+        AdaptiveQuality.attach(this);
         // Could help with Shield resolution bug?
         //setParameters(buildUponParameters().setForceHighestSupportedBitrate(true));
     }
@@ -125,6 +127,23 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     @Override
     protected Definition selectVideoTrack(TrackGroupArray groups, int[][] formatSupports, int mixedMimeTypeAdaptationSupports,
                                               Parameters params, boolean enableAdaptiveTrackSelection) throws ExoPlaybackException {
+        // Car build: auto quality that follows the network speed
+        if (AdaptiveQuality.isEnabled()) {
+            Parameters adaptiveParams = params.buildUpon()
+                    .setMaxVideoSize(AdaptiveQuality.MAX_WIDTH, AdaptiveQuality.MAX_HEIGHT)
+                    .build();
+            Definition definition = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports,
+                    adaptiveParams, true);
+            if (definition == null) { // nothing fits the cap: let ExoPlayer pick without it
+                definition = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports, params, true);
+            }
+            if (mCallback != null && definition != null) {
+                mCallback.updateVideoTrackSelection(groups, params, definition);
+            }
+            Log.d(TAG, "selectVideoTrack: adaptive (auto) video quality");
+            return definition;
+        }
+
         if (mCallback != null) {
             Pair<Definition, MediaTrack> resultPair = mCallback.onSelectVideoTrack(groups, params);
 
