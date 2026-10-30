@@ -37,6 +37,10 @@ public final class DualScreen {
     public interface Library {
         java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> getSuggestions();
         void play(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video);
+        /** The main screen's player buttons. */
+        java.util.List<androidx.leanback.widget.Action> actions();
+        void click(androidx.leanback.widget.Action action);
+        void longClick(androidx.leanback.widget.Action action);
     }
 
     private Library mLibrary;
@@ -513,10 +517,22 @@ public final class DualScreen {
         private io.reactivex.disposables.Disposable mMenuLoad;
         private io.reactivex.disposables.Disposable mNextSearch;
         private int mMenuIndex = -1;
+        private ScreenTwoSheet mSheet;
+        private ChannelPanel mChannel;
+        private io.reactivex.disposables.Disposable mChannelLoad;
 
         void release() {
             if (mControls != null) {
                 mControls.release();
+            }
+            if (mSheet != null) {
+                mSheet.release();
+                if (com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink == mSheet) {
+                    com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink = null;
+                }
+            }
+            if (mChannelLoad != null) {
+                mChannelLoad.dispose();
             }
             if (mMenuLoad != null) {
                 mMenuLoad.dispose();
@@ -571,6 +587,7 @@ public final class DualScreen {
                             loadMenu(index);
                         }
                     });
+            mChannel = new ChannelPanel(mActivity, mCtx, mRootView, video -> nextHost.onVideoClicked(video));
             mMenu.setSearch((query, panel) -> {
                 if (mMenuLoad != null) {
                     mMenuLoad.dispose();
@@ -614,13 +631,48 @@ public final class DualScreen {
                 }
             }
             @Override public boolean anyOpen() {
-                return mNext.isOpen() || mMenu.isOpen();
+                return mNext.isOpen() || mMenu.isOpen() || (mChannel != null && mChannel.isOpen());
             }
             @Override public void closeAll() {
                 mNext.close();
                 mMenu.close();
+                if (mChannel != null) {
+                    mChannel.close();
+                }
+            }
+            @Override public void openOptions() {
+                closeAll();
+                if (mSheet != null) {
+                    mSheet.openActions();
+                }
+            }
+            @Override public void openChannel() {
+                ScreenTwoUi.this.openChannel();
             }
         };
+
+        void openChannel() {
+            com.liskovsoft.smartyoutubetv2.common.app.models.data.Video v = null;
+            try {
+                v = com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter.instance(mActivity).getVideo();
+            } catch (Throwable ignored) {
+            }
+            if (v == null || v.channelId == null || mChannel == null) {
+                android.widget.Toast.makeText(mCtx, "ยังไม่รู้ช่องของคลิปนี้", android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            mNext.close();
+            mMenu.close();
+            mChannel.open(v.getAuthor());
+            if (mChannelLoad != null) {
+                mChannelLoad.dispose();
+            }
+            mChannelLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.channel(v.channelId, (videos, error) -> {
+                if (mChannel != null) {
+                    mChannel.setItems(videos, error != null ? error : "ไม่มีวิดีโอ");
+                }
+            });
+        }
 
         /** A list is open: the video moves to one side (fit), back to the full screen when it closes. */
         void setVideoFraction(float fraction, boolean videoOnRight) {
@@ -654,6 +706,31 @@ public final class DualScreen {
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
             buildPanels();
             mControls = new ScreenTwoControls(ctx, mActivity, root, () -> mPlayer, mPanels);
+            mSheet = new ScreenTwoSheet(ctx, root, new ScreenTwoSheet.Host() {
+                @Override public java.util.List<androidx.leanback.widget.Action> actions() {
+                    return mLibrary != null ? mLibrary.actions() : new java.util.ArrayList<>();
+                }
+                @Override public void click(androidx.leanback.widget.Action action) {
+                    if (mLibrary != null) {
+                        mLibrary.click(action);
+                    }
+                }
+                @Override public void longClick(androidx.leanback.widget.Action action) {
+                    if (mLibrary != null) {
+                        mLibrary.longClick(action);
+                    }
+                }
+                @Override public void openChannel() {
+                    ScreenTwoUi.this.openChannel();
+                }
+                @Override public void openSearch() {
+                    mPanels.openMenu();
+                    if (mMenu != null) {
+                        mMenu.startSearch();
+                    }
+                }
+            });
+            com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink = mSheet;
             mControls.showFor(); // show once so it's clear the second screen can be touched
             if (mPlayer != null) {
                 Format f = mPlayer.getVideoFormat();

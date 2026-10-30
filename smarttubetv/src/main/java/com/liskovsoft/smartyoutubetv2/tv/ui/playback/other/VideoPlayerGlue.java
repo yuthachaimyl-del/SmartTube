@@ -309,6 +309,37 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
         }
     }
 
+    /** Car build: the player's buttons as shown on the main screen (for the second screen's options page). */
+    public java.util.List<Action> getCarActions() {
+        java.util.List<Action> out = new java.util.ArrayList<>();
+        if (getControlsRow() == null) {
+            return out;
+        }
+        androidx.leanback.widget.ObjectAdapter[] adapters = {getControlsRow().getPrimaryActionsAdapter(),
+                getControlsRow().getSecondaryActionsAdapter()};
+        for (androidx.leanback.widget.ObjectAdapter a : adapters) {
+            if (a == null) {
+                continue;
+            }
+            for (int i = 0; i < a.size(); i++) {
+                Object o = a.get(i);
+                if (o instanceof Action && mActions.containsKey((int) ((Action) o).getId())) {
+                    out.add((Action) o);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Car build: press a player button from the second screen, exactly like the main screen. */
+    public void clickCarAction(Action action) {
+        onActionClicked(action);
+    }
+
+    public void longClickCarAction(Action action) {
+        onActionLongClicked(action);
+    }
+
     public int getButtonState(int buttonId) {
         return getActionIndex(mActions.get(buttonId));
     }

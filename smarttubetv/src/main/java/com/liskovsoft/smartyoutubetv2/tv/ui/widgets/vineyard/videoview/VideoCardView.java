@@ -62,7 +62,7 @@ public class VideoCardView extends BaseCardView {
     private void buildImageCardView(int styleResId) {
         // Make sure the ImageCardView is focusable.
         setFocusable(true);
-        setFocusableInTouchMode(true);
+        setFocusableInTouchMode(false); // Car build: one tap opens (no focus-first tap)
 
         LayoutInflater inflater = LayoutInflater.from(getContext());
         View view = inflater.inflate(R.layout.lb_video_card_view, this);

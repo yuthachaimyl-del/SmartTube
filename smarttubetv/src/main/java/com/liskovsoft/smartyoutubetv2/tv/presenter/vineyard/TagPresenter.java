@@ -39,7 +39,7 @@ public class TagPresenter extends LongClickPresenter {
         };
 
         cardView.setFocusable(true);
-        cardView.setFocusableInTouchMode(true);
+        cardView.setFocusableInTouchMode(false); // Car build: one tap opens (no focus-first tap)
         updateCardBackgroundColor(cardView, false);
         updateCardTextColor(cardView, false);
         //if (VERSION.SDK_INT >= 23 && MainUIData.instance(parent.getContext()).isUiTweakEnabled(MainUIData.UI_TWEAK_ROUNDED_CORNERS)) {

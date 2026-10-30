@@ -27,7 +27,7 @@ public class GridItemPresenter extends Presenter {
 
         view.setLayoutParams(new ViewGroup.LayoutParams(width, height));
         view.setFocusable(true);
-        view.setFocusableInTouchMode(true);
+        view.setFocusableInTouchMode(false); // Car build: one tap opens (no focus-first tap)
         view.setBackgroundColor(ContextCompat.getColor(parent.getContext(),
                 R.color.card_default_background));
         view.setTextColor(Color.WHITE);

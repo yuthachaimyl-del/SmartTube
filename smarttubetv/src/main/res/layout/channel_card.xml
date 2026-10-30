@@ -2,7 +2,7 @@
 <!-- NOTE: You can't set layout dimension for Presenter's container -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
              xmlns:tools="http://schemas.android.com/tools"
-             android:focusableInTouchMode="true"
+             android:focusableInTouchMode="false"
              android:focusable="true"
              android:layout_width="wrap_content"
              android:layout_height="wrap_content">

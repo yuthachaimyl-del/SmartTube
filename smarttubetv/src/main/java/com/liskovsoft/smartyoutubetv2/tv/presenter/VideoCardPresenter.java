@@ -80,7 +80,7 @@ public class VideoCardPresenter extends LongClickPresenter {
         cardView.enableTextAutoScroll(isCardTextAutoScrollEnabled);
         cardView.setTextScrollSpeed(cardTextScrollSpeed);
         cardView.setFocusable(true);
-        cardView.setFocusableInTouchMode(true);
+        cardView.setFocusableInTouchMode(false); // Car build: one tap opens (no focus-first tap)
         cardView.enableBadge(isBadgeEnabled());
         cardView.enableTitle(isTitleEnabled());
         cardView.enableContent(isContentEnabled());

@@ -44,10 +44,15 @@ public final class ChannelPanel {
     private boolean mOpen;
 
     public ChannelPanel(Activity activity, ViewGroup root, Host host) {
+        this(activity, activity, root, host);
+    }
+
+    /** @param ctx the window's context (the second screen's, when shown there) */
+    public ChannelPanel(Activity activity, Context ctx, ViewGroup root, Host host) {
         mActivity = activity;
-        mCtx = activity;
+        mCtx = ctx;
         mHost = host;
-        mPanel = new LinearLayout(activity);
+        mPanel = new LinearLayout(ctx);
         mPanel.setOrientation(LinearLayout.VERTICAL);
         mPanel.setBackgroundColor(0xF2101A3A);
         mPanel.setClickable(true);
@@ -55,18 +60,18 @@ public final class ChannelPanel {
         mPanel.setElevation(dp(20));
         mPanel.setPadding(0, dp(8), 0, dp(12));
 
-        LinearLayout header = new LinearLayout(activity);
+        LinearLayout header = new LinearLayout(ctx);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(20), 0, dp(8), dp(6));
-        mTitle = new TextView(activity);
+        mTitle = new TextView(ctx);
         mTitle.setTextColor(Color.WHITE);
         mTitle.setTypeface(Typeface.DEFAULT_BOLD);
         mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(22));
         mTitle.setSingleLine(true);
         mTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(mTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView close = new TextView(activity);
+        TextView close = new TextView(ctx);
         close.setText("✕");
         close.setTextColor(Color.WHITE);
         close.setGravity(Gravity.CENTER);
@@ -75,22 +80,22 @@ public final class ChannelPanel {
         header.addView(close, new LinearLayout.LayoutParams(dp(56), dp(52)));
         mPanel.addView(header);
 
-        TextView latest = new TextView(activity);
+        TextView latest = new TextView(ctx);
         latest.setText("วิดีโอล่าสุด");
         latest.setTextColor(0xFFCCCCCC);
         latest.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(17));
         latest.setPadding(dp(20), 0, 0, dp(8));
         mPanel.addView(latest);
 
-        FrameLayout listBox = new FrameLayout(activity);
-        RecyclerView list = new RecyclerView(activity);
-        list.setLayoutManager(new LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false));
+        FrameLayout listBox = new FrameLayout(ctx);
+        RecyclerView list = new RecyclerView(ctx);
+        list.setLayoutManager(new LinearLayoutManager(ctx, LinearLayoutManager.HORIZONTAL, false));
         list.setAdapter(mAdapter);
         list.setPadding(dp(12), 0, dp(12), 0);
         list.setClipToPadding(false);
         list.setFocusable(false);
         listBox.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        mEmpty = new TextView(activity);
+        mEmpty = new TextView(ctx);
         mEmpty.setTextColor(0xFFAAAAAA);
         mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
         mEmpty.setGravity(Gravity.CENTER);

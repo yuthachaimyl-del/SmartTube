@@ -125,6 +125,20 @@ public class AppDialogPresenter extends BasePresenter<AppDialogView> {
         mTitle = dialogTitle;
         mOnFinish.add(onFinish);
         
+        // Car build: asked from the second screen -> show the dialog there, not on the main screen
+        com.liskovsoft.smartyoutubetv2.common.car.CarState.DialogSink sink = com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink;
+        if (sink != null && (sink.isOpen() || com.liskovsoft.smartyoutubetv2.common.car.CarState.isDialogArmed())
+                && com.liskovsoft.smartyoutubetv2.common.car.CarState.canShowOnSink(mCategories)) {
+            com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogArmUntil = 0;
+            backupData();
+            resetData();
+            mExternal = true;
+            sink.show(mBackupTitle, mBackupCategories, this::onExternalClosed);
+            Utils.runMyCallbacks(mOnStart);
+            setupTimeout();
+            return;
+        }
+
         backupData(); // overlapped dialog fix
         resetData(); // prepare to new call
 
@@ -137,13 +151,38 @@ public class AppDialogPresenter extends BasePresenter<AppDialogView> {
         setupTimeout();
     }
 
+    private boolean mExternal;
+
+    /** Car build: the second screen's dialog was closed. */
+    private void onExternalClosed() {
+        if (!mExternal) {
+            return;
+        }
+        mExternal = false;
+        Utils.runMyCallbacks(mOnFinish);
+        clear();
+    }
+
+    private boolean isExternalShown() {
+        com.liskovsoft.smartyoutubetv2.common.car.CarState.DialogSink sink = com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink;
+        return mExternal && sink != null && sink.isOpen();
+    }
+
     public void closeDialog() {
+        if (isExternalShown()) {
+            com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink.close();
+            return;
+        }
         if (getView() != null) {
             getView().finish();
         }
     }
 
     public void goBack() {
+        if (isExternalShown()) {
+            com.liskovsoft.smartyoutubetv2.common.car.CarState.sDialogSink.goBack();
+            return;
+        }
         if (getView() != null) {
             getView().goBack();
         }
@@ -159,6 +198,9 @@ public class AppDialogPresenter extends BasePresenter<AppDialogView> {
         // Also check that current dialog almost closed (new view start is pending from a menu item)
         // Hmm. Maybe current dialog is pending. Check that view is null.
         // Also check that we aren't started the same view (nested dialog).
+        if (isExternalShown()) {
+            return true;
+        }
         return (getViewManager().isVisible(getView()) && getView() != null && !getView().isPaused()) ||
                 getViewManager().isViewPending(AppDialogView.class);
     }

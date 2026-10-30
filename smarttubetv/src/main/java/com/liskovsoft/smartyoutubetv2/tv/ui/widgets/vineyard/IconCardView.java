@@ -35,7 +35,7 @@ public class IconCardView extends BaseCardView {
     private void buildCardView(int styleResId) {
         // Make sure the ImageCardView is focusable.
         setFocusable(true);
-        setFocusableInTouchMode(true);
+        setFocusableInTouchMode(false); // Car build: one tap opens (no focus-first tap)
         //setCardType(CARD_TYPE_INFO_UNDER);
         setCardType(CARD_TYPE_MAIN_ONLY);
         setBackgroundResource(R.color.primary_dark);

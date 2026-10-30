@@ -36,6 +36,8 @@ final class ScreenTwoControls {
         void openMenu();
         boolean anyOpen();
         void closeAll();
+        void openOptions();  // the main screen's player buttons (quality, subtitles, like, ...)
+        void openChannel();  // the channel's latest videos
     }
 
     private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f};
@@ -158,6 +160,12 @@ final class ScreenTwoControls {
         mTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mTitle.setPadding(dp(16), 0, dp(16), 0);
         mTop.addView(mTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams optLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+        optLp.rightMargin = dp(10);
+        mTop.addView(chip("⚙  ตัวเลือก", v -> {
+            setShown(false);
+            mPanels.openOptions();
+        }), optLp);
         mTop.addView(chip("วิดีโอถัดไป  ▤", v -> {
             setShown(false);
             mPanels.openNext();
@@ -177,6 +185,15 @@ final class ScreenTwoControls {
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     float dx = e.getX() - mDownX, dy = Math.abs(e.getY() - mDownY);
+                    int h = v.getHeight();
+                    // swipe down from the top of the video: the channel's latest videos (like the main screen)
+                    if (!mSwiped && !mPanels.anyOpen() && mDownY < h * 0.25f && e.getY() - mDownY > h * 0.18f
+                            && e.getY() - mDownY > Math.abs(dx) * 2) {
+                        mSwiped = true;
+                        setShown(false);
+                        mPanels.openChannel();
+                        return true;
+                    }
                     if (!mSwiped && !mPanels.anyOpen() && Math.abs(dx) > w * 0.12f && Math.abs(dx) > dy * 1.5f) {
                         if (mDownX > w * 0.85f && dx < 0) {
                             mSwiped = true;

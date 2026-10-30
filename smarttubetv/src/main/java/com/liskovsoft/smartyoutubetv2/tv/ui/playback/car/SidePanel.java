@@ -302,6 +302,18 @@ public final class SidePanel {
         return b;
     }
 
+    /** Opens the search box (the player's 🔍 button). */
+    public void startSearch() {
+        if (mSearch == null) {
+            return;
+        }
+        if (mCtx == mActivity) {
+            openSearchDialog();
+        } else {
+            showSearch(true);
+        }
+    }
+
     private void showSearch(boolean show) {
         if (mSearchRow == null) {
             return;
