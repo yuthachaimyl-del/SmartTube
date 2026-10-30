@@ -517,7 +517,12 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
         if (Util.SDK_INT >= 23 && surface != null && !codecNeedsSetOutputSurfaceWorkaround) {
           setOutputSurfaceV23(codec, surface);
         } else {
-          releaseCodec();
+          releaseCodecAsync = surface == null; // Car build: going to the background, don't stall the audio
+          try {
+            releaseCodec();
+          } finally {
+            releaseCodecAsync = false;
+          }
           maybeInitCodec();
         }
       }

@@ -613,6 +613,12 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
     }
   }
 
+  /** Car build: set while releasing a codec whose output surface is gone (see MediaCodecVideoRenderer). */
+  protected boolean releaseCodecAsync;
+
+  private static final java.util.concurrent.Executor CODEC_RELEASER =
+      java.util.concurrent.Executors.newSingleThreadExecutor();
+
   protected void releaseCodec() {
     log.i("releaseCodec");
     availableCodecInfos = null;
@@ -629,10 +635,32 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
     try {
       if (codec != null) {
         decoderCounters.decoderReleaseCount++;
-        try {
-          codec.stop();
-        } finally {
-          codec.release();
+        if (releaseCodecAsync) {
+          // Car build: the surface went away (app in the background), free the decoder on another
+          // thread so the playback thread keeps feeding the audio (no gap / stutter).
+          final MediaCodec oldCodec = codec;
+          CODEC_RELEASER.execute(new Runnable() {
+            @Override
+            public void run() {
+              try {
+                oldCodec.stop();
+              } catch (Throwable ignored) {
+                // released anyway
+              } finally {
+                try {
+                  oldCodec.release();
+                } catch (Throwable ignored) {
+                  // nothing more to do
+                }
+              }
+            }
+          });
+        } else {
+          try {
+            codec.stop();
+          } finally {
+            codec.release();
+          }
         }
       }
     } finally {
