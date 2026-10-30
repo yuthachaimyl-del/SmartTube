@@ -158,7 +158,7 @@ public final class NowPlayingBar {
             ViewManager.instance(a).startView(PlaybackView.class);
         });
 
-        int w = Math.min(a.getResources().getDisplayMetrics().widthPixels - dp(a, 32), dp(a, 640));
+        int w = Math.min(a.getResources().getDisplayMetrics().widthPixels - dp(a, 32), dp(a, 500));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, dp(a, 60), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         lp.topMargin = dp(a, 18);
         bar.setLayoutParams(lp);
