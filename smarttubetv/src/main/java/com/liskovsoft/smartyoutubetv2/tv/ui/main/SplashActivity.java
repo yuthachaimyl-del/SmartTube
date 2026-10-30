@@ -15,6 +15,8 @@ public class SplashActivity extends MotherActivity implements SplashView {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        applyCarDefaults();
+
         mNewIntent = getIntent();
 
         mPresenter = SplashPresenter.instance(this);
@@ -22,6 +24,23 @@ public class SplashActivity extends MotherActivity implements SplashView {
         mPresenter.onViewInitialized();
 
         //finish();
+    }
+
+    /** Car build, once: keep playing (sound) when Home is pressed, resume the video on return. */
+    private void applyCarDefaults() {
+        android.content.SharedPreferences prefs = getSharedPreferences("car_defaults", MODE_PRIVATE);
+        if (prefs.getBoolean("bg_home_sound_v1", false)) {
+            return;
+        }
+        try {
+            com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData.instance(this)
+                    .setBackgroundMode(com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData.BACKGROUND_MODE_SOUND);
+            com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData.instance(this)
+                    .setBackgroundPlaybackShortcut(com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData.BACKGROUND_PLAYBACK_SHORTCUT_HOME);
+            prefs.edit().putBoolean("bg_home_sound_v1", true).apply();
+        } catch (Exception e) {
+            // try again next start
+        }
     }
 
     @Override

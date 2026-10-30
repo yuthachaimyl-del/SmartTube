@@ -195,6 +195,8 @@ public class ViewManager {
 
         // Fix: Calling startActivity() from outside of an Activity  context requires the FLAG_ACTIVITY_NEW_TASK flag
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // Car build: all screens share one task (so split-screen keeps the app); bring an existing screen forward
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
 
         safeStartActivity(mContext, intent);
     }

@@ -199,9 +199,27 @@ public class MotherActivity extends FragmentActivity {
         if (context != null) {
             // NOTE: Use only cached metrics. Because metrics creation involves using WindowManager, which isn't available at this stage.
             contextWrapper = LocaleContextWrapper.wrap(context, LocaleUpdater.getSavedLocale(context), sCachedDisplayMetrics);
+
+            // Car build: let a screen draw its UI smaller than the rest of the app
+            float factor = getCarDensityFactor();
+            if (factor != 1f && contextWrapper != null) {
+                try {
+                    android.content.res.Configuration cfg =
+                            new android.content.res.Configuration(contextWrapper.getResources().getConfiguration());
+                    cfg.densityDpi = Math.round(cfg.densityDpi * factor);
+                    contextWrapper = contextWrapper.createConfigurationContext(cfg);
+                } catch (Exception e) {
+                    // keep the normal size
+                }
+            }
         }
 
         super.attachBaseContext(contextWrapper);
+    }
+
+    /** Car build: UI size multiplier for this screen (1 = normal). */
+    protected float getCarDensityFactor() {
+        return 1f;
     }
 
     // ---- Car build: on-screen Back button for touch head units (no remote, nav bar hidden in fullscreen)

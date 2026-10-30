@@ -64,6 +64,12 @@ public class PlaybackActivity extends LeanbackActivity {
         return super.dispatchKeyEvent(event);
     }
 
+    /** Car build: smaller player controls so the video and the suggestions stay visible. */
+    @Override
+    protected float getCarDensityFactor() {
+        return 0.72f;
+    }
+
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         if (mPlaybackFragment != null) {

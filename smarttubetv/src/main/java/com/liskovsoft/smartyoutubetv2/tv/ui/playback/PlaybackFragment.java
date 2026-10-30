@@ -261,7 +261,56 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // NOP
     }
 
+    // Car build: tap on the bare video while the controls are shown -> back to full-screen video
+    private float mTapDownX;
+    private float mTapDownY;
+    private long mTapDownMs;
+    private boolean mTapDownOverlayShown;
+
+    private void handleCarTapToHide(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            mTapDownX = event.getRawX();
+            mTapDownY = event.getRawY();
+            mTapDownMs = System.currentTimeMillis();
+            mTapDownOverlayShown = isOverlayShown();
+            return;
+        }
+        if (event.getActionMasked() != MotionEvent.ACTION_UP || !mTapDownOverlayShown || !isOverlayShown()
+                || getView() == null) {
+            return;
+        }
+        float slop = 24 * getResources().getDisplayMetrics().density;
+        if (Math.abs(event.getRawX() - mTapDownX) > slop || Math.abs(event.getRawY() - mTapDownY) > slop
+                || System.currentTimeMillis() - mTapDownMs > 400) {
+            return; // a drag or a long press, not a tap
+        }
+        if (isOnBareVideo(event.getRawX(), event.getRawY())) {
+            hideControlsOverlay(true);
+        }
+    }
+
+    private boolean isOnBareVideo(float rawX, float rawY) {
+        int[] loc = new int[2];
+        if (isSideMode()) {
+            // suggestions panel sits to the right of the shrunk video
+            getView().getLocationOnScreen(loc);
+            return rawX - loc[0] < getView().getWidth() * 0.6f;
+        }
+        // full width: only the area above the title/controls block is bare video
+        if (mRowsSupportFragment == null || mRowsSupportFragment.getVerticalGridView() == null) {
+            return false;
+        }
+        androidx.recyclerview.widget.RecyclerView.ViewHolder vh =
+                mRowsSupportFragment.getVerticalGridView().findViewHolderForAdapterPosition(0);
+        if (vh == null || vh.itemView == null) {
+            return false;
+        }
+        vh.itemView.getLocationOnScreen(loc);
+        return rawY < loc[1];
+    }
+
     public void onDispatchTouchEvent(MotionEvent event) {
+        handleCarTapToHide(event);
         if (mDoubleTapPlayerAdapter != null && !isOverlayShown()) {
             boolean handled = mDoubleTapPlayerAdapter.onTouchEvent(event);
 
