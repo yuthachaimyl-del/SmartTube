@@ -81,6 +81,12 @@ public class HQDialogController extends BasePlayerController {
         if (videoOptions != null) {
             // Car build: auto quality that follows the network speed
             videoOptions = new ArrayList<>(videoOptions);
+            if (AdaptiveQuality.isEnabled()) {
+                // Auto is active: the playing track is chosen by ExoPlayer, don't show it as a fixed pick
+                for (OptionItem item : videoOptions) {
+                    UiOptionItem.setChecked(item, false);
+                }
+            }
             videoOptions.add(0, UiOptionItem.from("Auto (follows network speed)", optionItem -> {
                 AdaptiveQuality.setEnabled(true);
                 if (getPlayer() != null) {

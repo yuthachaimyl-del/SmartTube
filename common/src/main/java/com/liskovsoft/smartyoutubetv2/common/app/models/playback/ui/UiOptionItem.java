@@ -107,6 +107,13 @@ public class UiOptionItem implements OptionItem {
         return uiOptionItem;
     }
 
+    /** Car build: change the check mark without firing the callback. */
+    public static void setChecked(OptionItem option, boolean checked) {
+        if (option instanceof UiOptionItem) {
+            ((UiOptionItem) option).mIsSelected = checked;
+        }
+    }
+
     public static FormatItem toFormat(OptionItem option) {
         if (option instanceof UiOptionItem) {
             return ((UiOptionItem) option).mFormat;
