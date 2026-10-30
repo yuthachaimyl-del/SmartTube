@@ -436,6 +436,53 @@ public final class DualScreen {
         private io.reactivex.disposables.Disposable mNextSearch;
         private int mMenuIndex = -1;
 
+        /** Like the YouTube app in full screen: the second screen's own toolbar / bars hide (swipe from the edge shows them). */
+        @SuppressWarnings("deprecation")
+        void goFullScreen() {
+            android.view.Window w = getWindow();
+            if (w == null) {
+                return;
+            }
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
+                    | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                android.view.WindowManager.LayoutParams a = w.getAttributes();
+                a.layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                w.setAttributes(a);
+            }
+            View d = w.getDecorView();
+            d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                w.setDecorFitsSystemWindows(false);
+                android.view.WindowInsetsController c = w.getInsetsController();
+                if (c != null) {
+                    c.hide(android.view.WindowInsets.Type.systemBars());
+                    c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                }
+            }
+        }
+
+        @Override
+        protected void onStart() {
+            super.onStart();
+            goFullScreen();
+        }
+
+        @Override
+        public void onWindowFocusChanged(boolean hasFocus) {
+            super.onWindowFocusChanged(hasFocus);
+            if (hasFocus) {
+                goFullScreen();
+            }
+        }
+
         @Override
         protected void onStop() {
             if (mControls != null) {
@@ -582,6 +629,7 @@ public final class DualScreen {
             root.addView(mFrame, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
             setContentView(root);
+            goFullScreen();
             buildPanels();
             mControls = new ScreenTwoControls(getContext(), mActivity, root, () -> mPlayer, mPanels);
             mControls.showFor(); // show once so it's clear the second screen can be touched
