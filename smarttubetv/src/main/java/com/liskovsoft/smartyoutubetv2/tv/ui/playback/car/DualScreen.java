@@ -472,7 +472,7 @@ public final class DualScreen {
                 }
             };
             mNext = new SidePanel(mActivity, getContext(), mRootView, nextHost, false, "วิดีโอถัดไป", null);
-            mMenu = new SidePanel(mActivity, getContext(), mRootView, menuHost, true, "SmartTube",
+            mMenu = new SidePanel(mActivity, getContext(), mRootView, menuHost, true, "PiloTube",
                     new SidePanel.Tabs() {
                         @Override public String[] titles() {
                             return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES;

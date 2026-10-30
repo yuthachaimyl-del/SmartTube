@@ -284,7 +284,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                         @Override public java.util.List<Video> getSuggestions() { return null; }
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
                         @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
-                    }, true, "SmartTube",
+                    }, true, "PiloTube",
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Tabs() {
                         @Override public String[] titles() { return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES; }
                         @Override public void onTabSelected(int index, com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel panel) { loadLeftMenu(index); }

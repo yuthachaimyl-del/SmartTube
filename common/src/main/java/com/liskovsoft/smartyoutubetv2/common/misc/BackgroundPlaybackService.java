@@ -36,7 +36,7 @@ public class BackgroundPlaybackService extends Service {
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(getApplicationInfo().icon)
-                    .setContentTitle("SmartTube")
+                    .setContentTitle(getApplicationInfo().loadLabel(getPackageManager()))
                     .setContentText("กำลังเล่นเสียง")
                     .setOngoing(true)
                     .build();
