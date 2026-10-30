@@ -419,7 +419,7 @@ public class SearchSupportFragment extends Fragment {
 
         readArguments(getArguments());
         if (null != mBadgeDrawable) {
-            setBadgeDrawable(mBadgeDrawable);
+            setBadgeDrawable(null); // car build: no logo
         }
         if (null != mTitle) {
             setTitle(mTitle);

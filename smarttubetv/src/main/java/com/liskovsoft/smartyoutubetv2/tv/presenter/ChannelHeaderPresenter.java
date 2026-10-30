@@ -218,7 +218,7 @@ public class ChannelHeaderPresenter extends RowPresenter {
         searchSettingsOrbView.setOnOrbClickedListener(v -> provider.onSearchSettingsClicked());
 
         if (null != mBadgeDrawable) {
-            setBadgeDrawable(searchBar, mBadgeDrawable);
+            setBadgeDrawable(searchBar, null); // car build: no logo
         }
 
         if (null != mTitle) {
