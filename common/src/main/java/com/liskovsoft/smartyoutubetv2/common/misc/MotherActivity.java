@@ -201,7 +201,8 @@ public class MotherActivity extends FragmentActivity {
             contextWrapper = LocaleContextWrapper.wrap(context, LocaleUpdater.getSavedLocale(context), sCachedDisplayMetrics);
 
             // Car build: let a screen draw its UI smaller than the rest of the app
-            float factor = getCarDensityFactor(context);
+            mCarFactor = getCarDensityFactor(context, context.getResources().getConfiguration());
+            float factor = mCarFactor;
             if (factor != 1f && contextWrapper != null) {
                 try {
                     android.content.res.Configuration cfg =
@@ -218,7 +219,9 @@ public class MotherActivity extends FragmentActivity {
     }
 
     /** Car build: UI size multiplier for this screen (1 = normal). */
-    protected float getCarDensityFactor(Context base) {
+    private float mCarFactor = 1f;
+
+    protected float getCarDensityFactor(Context base, Configuration config) {
         return 1f;
     }
 
@@ -310,6 +313,8 @@ public class MotherActivity extends FragmentActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
 
+        mCarFactor = getCarDensityFactor(this, newConfig); // e.g. split-screen resized
+
         applyCustomConfig();
     }
 
@@ -325,7 +330,16 @@ public class MotherActivity extends FragmentActivity {
     }
 
     private void initDpi() {
-        getResources().getDisplayMetrics().setTo(getDisplayMetrics(this));
+        DisplayMetrics metrics = new DisplayMetrics();
+        metrics.setTo(getDisplayMetrics(this));
+        // Car build: keep this screen's own size factor (e.g. smaller player controls)
+        float factor = mCarFactor;
+        if (factor != 1f) {
+            metrics.density *= factor;
+            metrics.scaledDensity *= factor;
+            metrics.densityDpi = Math.round(metrics.densityDpi * factor);
+        }
+        getResources().getDisplayMetrics().setTo(metrics);
     }
 
     private DisplayMetrics getDisplayMetrics(Context context) {

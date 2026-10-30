@@ -66,11 +66,10 @@ public class PlaybackActivity extends LeanbackActivity {
 
     /** Car build: smaller player controls so the video and the suggestions stay visible. */
     @Override
-    protected float getCarDensityFactor(android.content.Context base) {
+    protected float getCarDensityFactor(android.content.Context base, android.content.res.Configuration c) {
         float factor = 0.72f;
         try {
             // split-screen: shrink further with the window so the controls still fit
-            android.content.res.Configuration c = base.getResources().getConfiguration();
             float windowWidth = c.screenWidthDp * c.densityDpi / 160f;
             android.util.DisplayMetrics real = new android.util.DisplayMetrics();
             ((android.view.WindowManager) base.getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(real);

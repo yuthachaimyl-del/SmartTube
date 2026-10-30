@@ -311,23 +311,44 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     private boolean isOnBareVideo(float rawX, float rawY) {
-        int[] loc = new int[2];
         if (isSideMode()) {
             // suggestions panel sits to the right of the shrunk video
+            int[] loc = new int[2];
             getView().getLocationOnScreen(loc);
-            return rawX - loc[0] < getView().getWidth() * 0.6f;
+            if (rawX - loc[0] >= getView().getWidth() * 0.6f) {
+                return false;
+            }
         }
-        // full width: only the area above the title/controls block is bare video
-        if (mRowsSupportFragment == null || mRowsSupportFragment.getVerticalGridView() == null) {
+        // bare video = nothing tappable (button, card, seek bar) under the finger
+        return !hitsTappable(getView(), rawX, rawY);
+    }
+
+    private static boolean hitsTappable(View v, float rawX, float rawY) {
+        if (v == null || v.getVisibility() != View.VISIBLE || v.getAlpha() < 0.05f) {
             return false;
         }
-        androidx.recyclerview.widget.RecyclerView.ViewHolder vh =
-                mRowsSupportFragment.getVerticalGridView().findViewHolderForAdapterPosition(0);
-        if (vh == null || vh.itemView == null) {
+        int[] loc = new int[2];
+        v.getLocationOnScreen(loc);
+        if (rawX < loc[0] || rawX > loc[0] + v.getWidth() * v.getScaleX()
+                || rawY < loc[1] || rawY > loc[1] + v.getHeight() * v.getScaleY()) {
             return false;
         }
-        vh.itemView.getLocationOnScreen(loc);
-        return rawY < loc[1];
+        boolean container = v instanceof androidx.recyclerview.widget.RecyclerView
+                || (v instanceof android.view.ViewGroup && v.getParent() == null);
+        if (!container && (v.isClickable() || v.isLongClickable() || v.isFocusable())
+                && !(v instanceof android.view.ViewGroup && ((android.view.ViewGroup) v).getChildCount() > 0
+                     && v.getWidth() > 0 && v.getRootView() != null && v.getWidth() >= v.getRootView().getWidth() * 0.9f)) {
+            return true;
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = g.getChildCount() - 1; i >= 0; i--) {
+                if (hitsTappable(g.getChildAt(i), rawX, rawY)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public void onDispatchTouchEvent(MotionEvent event) {
