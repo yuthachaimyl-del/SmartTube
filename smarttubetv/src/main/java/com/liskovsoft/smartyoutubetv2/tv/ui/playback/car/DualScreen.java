@@ -118,7 +118,7 @@ public final class DualScreen {
 
     private void addPlaceholder() {
         mPlaceholder = new TextView(mActivity);
-        mPlaceholder.setText("▶  กำลังเล่นบนจอ 2");
+        mPlaceholder.setText(""); // controls stay on screen in this mode, just a black backdrop
         mPlaceholder.setTextColor(0xCCFFFFFF);
         mPlaceholder.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         mPlaceholder.setGravity(Gravity.CENTER);
