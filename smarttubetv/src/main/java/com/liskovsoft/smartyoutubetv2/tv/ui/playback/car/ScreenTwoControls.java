@@ -119,6 +119,7 @@ final class ScreenTwoControls {
 
         // tap the video: show / hide; double-tap left or right side: skip 10 s
         root.setOnTouchListener((v, e) -> {
+            android.util.Log.i("CarS2", "root touch " + e.getActionMasked() + " " + e.getX() + "," + e.getY());
             if (e.getActionMasked() != MotionEvent.ACTION_UP) {
                 return true;
             }
@@ -154,6 +155,7 @@ final class ScreenTwoControls {
         bg.setStroke(dp(1.5f), 0x66FFFFFF);
         b.setBackground(bg);
         b.setOnClickListener(v -> {
+            android.util.Log.i("CarS2", "click " + text);
             click.onClick(v);
             showFor();
         });
@@ -211,7 +213,9 @@ final class ScreenTwoControls {
         if (dur > 0) {
             pos = Math.min(pos, dur - 1000);
         }
+        android.util.Log.i("CarS2", "seek " + p.getCurrentPosition() + " -> " + pos + " dur " + dur);
         p.seekTo(pos);
+        android.util.Log.i("CarS2", "after seek " + p.getCurrentPosition());
         update();
     }
 
