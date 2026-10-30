@@ -25,6 +25,7 @@ public final class CenterControls {
         boolean isControlsShown();
         SimpleExoPlayer getPlayer();
         void onUserAction(); // keep the controls on screen a bit longer
+        void onSync();       // called a few times a second (auto-hide of the floating buttons)
     }
 
     private static final long SEEK_MS = 10_000;
@@ -105,6 +106,7 @@ public final class CenterControls {
     }
 
     private void sync() {
+        mHost.onSync();
         // second-screen mode: the main screen is the remote, keep the controls on screen
         boolean keep = DualScreen.isActive();
         com.liskovsoft.smartyoutubetv2.common.car.CarState.sKeepControls = keep;

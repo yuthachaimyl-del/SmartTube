@@ -247,6 +247,26 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         return out;
     }
 
+    // Car build: the Back and "จอ 2" buttons hide 5 s after the last touch, a tap brings them back
+    private static final long FLOATING_BUTTONS_MS = 5_000;
+    private long mLastTouchMs = System.currentTimeMillis();
+
+    private void syncFloatingButtons() {
+        boolean show = System.currentTimeMillis() - mLastTouchMs < FLOATING_BUTTONS_MS;
+        if (getActivity() != null) {
+            View back = getActivity().getWindow().getDecorView().findViewWithTag("car_back_button");
+            if (back != null) {
+                int v = show ? View.VISIBLE : View.GONE;
+                if (back.getVisibility() != v) {
+                    back.setVisibility(v);
+                }
+            }
+        }
+        if (mDualScreen != null) {
+            mDualScreen.setButtonsVisible(show);
+        }
+    }
+
     private void ensureCenterControls() {
         if (mSidePanel == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
             mSidePanel = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel(
@@ -277,6 +297,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                         @Override public boolean isControlsShown() { return isOverlayShown(); }
                         @Override public SimpleExoPlayer getPlayer() { return mPlayer; }
                         @Override public void onUserAction() { showOverlay(true); }
+                        @Override public void onSync() { syncFloatingButtons(); }
                     });
         }
     }
@@ -483,6 +504,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     public void onDispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            mLastTouchMs = System.currentTimeMillis();
+            syncFloatingButtons();
+        }
         handleCarTapToHide(event);
         if (mDoubleTapPlayerAdapter != null && !isOverlayShown()) {
             boolean handled = mDoubleTapPlayerAdapter.onTouchEvent(event);

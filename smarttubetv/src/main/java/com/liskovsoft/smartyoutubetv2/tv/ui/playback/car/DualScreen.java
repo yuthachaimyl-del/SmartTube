@@ -136,6 +136,17 @@ public final class DualScreen {
     private static int sScaleMode = SCALE_ZOOM;
     private TextView mScaleButton;
     private View mButtonRow;
+    private boolean mHasSecond;
+    private boolean mButtonsWanted = true;
+
+    /** Auto-hide: the buttons show only for a few seconds after touching the screen. */
+    public void setButtonsVisible(boolean visible) {
+        mButtonsWanted = visible;
+        int v = mHasSecond && visible ? View.VISIBLE : View.GONE;
+        if (mButtonRow.getVisibility() != v) {
+            mButtonRow.setVisibility(v);
+        }
+    }
 
     private void styleButton() {
         GradientDrawable bg = new GradientDrawable();
@@ -281,7 +292,8 @@ public final class DualScreen {
 
     private void refresh() {
         Display second = secondDisplay();
-        mButtonRow.setVisibility(second != null ? View.VISIBLE : View.GONE);
+        mHasSecond = second != null;
+        mButtonRow.setVisibility(mHasSecond && mButtonsWanted ? View.VISIBLE : View.GONE);
         styleButton();
         boolean want = sEnabled && mStarted && second != null && !mActivity.isFinishing();
         if (want && mPresentation == null) {
