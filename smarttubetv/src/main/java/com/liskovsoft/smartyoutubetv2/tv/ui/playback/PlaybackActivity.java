@@ -75,7 +75,7 @@ public class PlaybackActivity extends LeanbackActivity {
             ((android.view.WindowManager) base.getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(real);
             int screenWidth = Math.max(real.widthPixels, real.heightPixels);
             if (windowWidth > 0 && screenWidth > 0) {
-                factor *= Math.max(0.5f, Math.min(1f, windowWidth / screenWidth));
+                factor *= Math.max(0.75f, Math.min(1f, windowWidth / screenWidth));
             }
         } catch (Exception ignored) {
         }
