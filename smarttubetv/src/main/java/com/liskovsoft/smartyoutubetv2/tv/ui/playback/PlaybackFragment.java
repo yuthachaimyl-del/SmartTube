@@ -378,8 +378,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         // swipe from the right edge towards the middle -> list of next videos on the right
         if (mSidePanel != null && getView() != null) {
             int w = getView().getWidth();
+            // touch positions are screen coordinates; in split-screen the player doesn't start at x = 0
+            int[] viewLoc = new int[2];
+            getView().getLocationOnScreen(viewLoc);
+            float downX = mTapDownX - viewLoc[0];
             if (event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone && !mSidePanel.isOpen()
-                    && (mLeftMenu == null || !mLeftMenu.isOpen()) && mTapDownX > w * 0.85f) {
+                    && (mLeftMenu == null || !mLeftMenu.isOpen()) && downX > w * 0.85f) {
                 float dx = mTapDownX - event.getRawX(), dy = Math.abs(event.getRawY() - mTapDownY);
                 if (dx > w * 0.2f && dx > dy * 2) {
                     mEdgeSwipeDone = true;
@@ -389,7 +393,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 }
             }
             if (mLeftMenu != null && event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone
-                    && !mLeftMenu.isOpen() && !mSidePanel.isOpen() && mTapDownX < w * 0.15f) {
+                    && !mLeftMenu.isOpen() && !mSidePanel.isOpen() && downX >= 0 && downX < w * 0.15f) {
                 float dx = event.getRawX() - mTapDownX, dy = Math.abs(event.getRawY() - mTapDownY);
                 if (dx > w * 0.2f && dx > dy * 2) {
                     mEdgeSwipeDone = true;
