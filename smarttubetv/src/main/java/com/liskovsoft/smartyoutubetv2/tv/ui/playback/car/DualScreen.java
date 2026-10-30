@@ -98,14 +98,44 @@ public final class DualScreen {
             sEnabled = !sEnabled;
             refresh();
         });
+        // how the picture fills the second screen: zoom (crop) / stretch / fit
+        sScaleMode = mActivity.getSharedPreferences("car_dual", Context.MODE_PRIVATE).getInt("scale", SCALE_ZOOM);
+        mScaleButton = new TextView(mActivity);
+        mScaleButton.setTextColor(Color.WHITE);
+        mScaleButton.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(20));
+        mScaleButton.setGravity(Gravity.CENTER);
+        mScaleButton.setPadding(dp(16), 0, dp(16), 0);
+        mScaleButton.setFocusable(false);
+        mScaleButton.setOnClickListener(v -> {
+            sScaleMode = (sScaleMode + 1) % 3;
+            mActivity.getSharedPreferences("car_dual", Context.MODE_PRIVATE).edit().putInt("scale", sScaleMode).apply();
+            styleButton();
+            if (mPresentation != null) {
+                mPresentation.applyScale();
+            }
+        });
+
+        android.widget.LinearLayout row = new android.widget.LinearLayout(mActivity);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        android.widget.LinearLayout.LayoutParams blp =
+                new android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(64));
+        blp.rightMargin = dp(10);
+        row.addView(mScaleButton, blp);
+        row.addView(mButton, new android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(64)));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(64),
                 Gravity.TOP | Gravity.END);
         lp.topMargin = dp(10);
         lp.rightMargin = dp(84); // left of the on-screen Back button
-        mButton.setElevation(dp(20));
-        mRoot.addView(mButton, lp);
+        row.setElevation(dp(20));
+        mButtonRow = row;
+        mRoot.addView(row, lp);
         styleButton();
     }
+
+    static final int SCALE_ZOOM = 0, SCALE_STRETCH = 1, SCALE_FIT = 2;
+    private static int sScaleMode = SCALE_ZOOM;
+    private TextView mScaleButton;
+    private View mButtonRow;
 
     private void styleButton() {
         GradientDrawable bg = new GradientDrawable();
@@ -114,6 +144,15 @@ public final class DualScreen {
         bg.setStroke(dp(1), 0x66FFFFFF);
         mButton.setBackground(bg);
         mButton.setText(sEnabled ? "จอ 2 ●" : "จอ 2");
+        if (mScaleButton != null) {
+            GradientDrawable sbg = new GradientDrawable();
+            sbg.setCornerRadius(dp(32));
+            sbg.setColor(0x99000000);
+            sbg.setStroke(dp(1), 0x66FFFFFF);
+            mScaleButton.setBackground(sbg);
+            mScaleButton.setText(sScaleMode == SCALE_ZOOM ? "⛶ เต็มจอ (ซูม)" : sScaleMode == SCALE_STRETCH ? "⛶ เต็มจอ (ยืด)" : "▭ พอดีจอ");
+            mScaleButton.setVisibility(sEnabled ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void addPlaceholder() {
@@ -242,7 +281,7 @@ public final class DualScreen {
 
     private void refresh() {
         Display second = secondDisplay();
-        mButton.setVisibility(second != null ? View.VISIBLE : View.GONE);
+        mButtonRow.setVisibility(second != null ? View.VISIBLE : View.GONE);
         styleButton();
         boolean want = sEnabled && mStarted && second != null && !mActivity.isFinishing();
         if (want && mPresentation == null) {
@@ -315,7 +354,7 @@ public final class DualScreen {
             FrameLayout root = new FrameLayout(getContext());
             root.setBackgroundColor(Color.BLACK);
             mFrame = new AspectRatioFrameLayout(getContext());
-            mFrame.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            applyScale();
             SurfaceView sv = new SurfaceView(getContext());
             mFrame.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
@@ -349,6 +388,14 @@ public final class DualScreen {
                     }
                 }
             });
+        }
+
+        void applyScale() {
+            if (mFrame != null) {
+                mFrame.setResizeMode(sScaleMode == SCALE_ZOOM ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        : sScaleMode == SCALE_STRETCH ? AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        : AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            }
         }
 
         void setAspect(float aspect) {
