@@ -138,7 +138,7 @@ public final class DualScreen {
         if (mPlayer != null) {
             mPlayer.addVideoListener(mVideoListener);
             Surface override = LeanbackPlayerAdapter.sOverrideSurface;
-            if (mPresentation != null && override != null && override.isValid()) {
+            if (mPresentation != null && override != null && override.isValid()) { // mirror input or screen 2
                 bindSurface(override);
             }
         }
@@ -163,8 +163,81 @@ public final class DualScreen {
         refresh();
     }
 
+    /** Video only on the second screen (main screen = remote). False while mirroring to both screens. */
     public static boolean isActive() {
-        return sEnabled && LeanbackPlayerAdapter.sOverrideSurface != null;
+        return sEnabled && LeanbackPlayerAdapter.sOverrideSurface != null && !sMirroring;
+    }
+
+    // ---- both screens at once: one decoder, GPU copy to the main and the second screen
+
+    private static volatile boolean sMirroring;
+    private MirrorRenderer mMirror;
+    private Surface mMainTarget;
+    private Surface mPresentationTarget;
+    private boolean mMainCallbackAdded;
+
+    private Surface mainSurface() {
+        if (mMainVideo instanceof SurfaceView) {
+            Surface hs = ((SurfaceView) mMainVideo).getHolder().getSurface();
+            return hs != null && hs.isValid() ? hs : null;
+        }
+        return null;
+    }
+
+    private void startMirror(Surface presentation) {
+        mPresentationTarget = presentation;
+        if (mMirror == null) {
+            mMirror = new MirrorRenderer();
+        }
+        Surface input = mMirror.getInputSurface();
+        if (input == null) { // no OpenGL: second screen only
+            mMirror.release();
+            mMirror = null;
+            sMirroring = false;
+            LeanbackPlayerAdapter.sOverrideSurface = presentation;
+            bindSurface(presentation);
+            return;
+        }
+        sMirroring = true;
+        mMirror.addTarget(presentation);
+        LeanbackPlayerAdapter.sOverrideSurface = input;
+        bindSurface(input); // the decoder lets go of the main surface here...
+        if (!mMainCallbackAdded && mMainVideo instanceof SurfaceView) {
+            mMainCallbackAdded = true;
+            ((SurfaceView) mMainVideo).getHolder().addCallback(new SurfaceHolder.Callback() {
+                @Override public void surfaceCreated(SurfaceHolder h) {
+                    if (mMirror != null && sMirroring) {
+                        mMainTarget = h.getSurface();
+                        mMirror.addTarget(mMainTarget);
+                    }
+                }
+                @Override public void surfaceChanged(SurfaceHolder h, int f, int w, int ht) { }
+                @Override public void surfaceDestroyed(SurfaceHolder h) {
+                    if (mMirror != null && h.getSurface() == mMainTarget) {
+                        mMirror.removeTarget(mMainTarget);
+                        mMainTarget = null;
+                    }
+                }
+            });
+        }
+        mPlaceholder.setVisibility(View.GONE); // the main screen keeps showing the video
+        // ...so the main screen can be drawn by the mirror a moment later
+        mMainVideo.postDelayed(() -> {
+            if (mMirror != null && sMirroring && mMainTarget == null) {
+                mMainTarget = mainSurface();
+                mMirror.addTarget(mMainTarget);
+            }
+        }, 300);
+    }
+
+    private void stopMirror() {
+        sMirroring = false;
+        if (mMirror != null) {
+            mMirror.release(); // also lets go of the main surface
+            mMirror = null;
+        }
+        mMainTarget = null;
+        mPresentationTarget = null;
     }
 
     private void refresh() {
@@ -177,7 +250,7 @@ public final class DualScreen {
         } else if (!want && mPresentation != null) {
             hide();
         }
-        mPlaceholder.setVisibility(mPresentation != null ? View.VISIBLE : View.GONE);
+        mPlaceholder.setVisibility(mPresentation != null && !sMirroring ? View.VISIBLE : View.GONE);
     }
 
     private void show(Display display) {
@@ -198,6 +271,7 @@ public final class DualScreen {
 
     private void hide() {
         LeanbackPlayerAdapter.sOverrideSurface = null;
+        stopMirror();
         try {
             mPresentation.dismiss();
         } catch (Exception ignored) {
@@ -259,8 +333,7 @@ public final class DualScreen {
             sv.getHolder().addCallback(new SurfaceHolder.Callback() {
                 @Override
                 public void surfaceCreated(SurfaceHolder holder) {
-                    LeanbackPlayerAdapter.sOverrideSurface = holder.getSurface();
-                    bindSurface(holder.getSurface());
+                    startMirror(holder.getSurface());
                 }
 
                 @Override
@@ -269,8 +342,9 @@ public final class DualScreen {
 
                 @Override
                 public void surfaceDestroyed(SurfaceHolder holder) {
-                    if (LeanbackPlayerAdapter.sOverrideSurface == holder.getSurface()) {
+                    if (holder.getSurface() == mPresentationTarget || LeanbackPlayerAdapter.sOverrideSurface == holder.getSurface()) {
                         LeanbackPlayerAdapter.sOverrideSurface = null;
+                        stopMirror();
                         bindMainSurface();
                     }
                 }
