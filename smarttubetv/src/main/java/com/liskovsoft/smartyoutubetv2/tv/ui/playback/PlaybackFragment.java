@@ -228,6 +228,30 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         });
     }
 
+    private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.ChannelPanel mChannelPanel;
+    private io.reactivex.disposables.Disposable mChannelLoad;
+
+    private void openChannelPanel() {
+        Video v = mPlaybackPresenter.getVideo();
+        if (v == null || v.channelId == null || getActivity() == null || !(getView() instanceof android.view.ViewGroup)) {
+            android.widget.Toast.makeText(getContext(), "ยังไม่รู้ช่องของคลิปนี้", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (mChannelPanel == null) {
+            mChannelPanel = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.ChannelPanel(getActivity(),
+                    (android.view.ViewGroup) getView(), video -> mPlaybackPresenter.onSuggestionItemClicked(video));
+        }
+        mChannelPanel.open(v.getAuthor());
+        if (mChannelLoad != null) {
+            mChannelLoad.dispose();
+        }
+        mChannelLoad = com.liskovsoft.smartyoutubetv2.common.car.CarSections.channel(v.channelId, (videos, error) -> {
+            if (mChannelPanel != null) {
+                mChannelPanel.setItems(videos, error != null ? error : "ไม่มีวิดีโอ");
+            }
+        });
+    }
+
     private void searchLeftMenu(String query) {
         if (mLeftMenu == null) {
             return;
@@ -459,6 +483,27 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     }
                     return;
                 }
+            }
+            // swipe down from the top of the video -> the channel's latest videos
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE && !mEdgeSwipeDone && !mSidePanel.isOpen()
+                    && (mLeftMenu == null || !mLeftMenu.isOpen()) && (mChannelPanel == null || !mChannelPanel.isOpen())) {
+                int[] loc = new int[2];
+                getView().getLocationOnScreen(loc);
+                float downY = mTapDownY - loc[1];
+                int h = getView().getHeight();
+                float dy = event.getRawY() - mTapDownY, dx = Math.abs(event.getRawX() - mTapDownX);
+                if (downY >= 0 && downY < h * 0.25f && dy > h * 0.18f && dy > dx * 2) {
+                    mEdgeSwipeDone = true;
+                    hideControlsOverlay(true);
+                    openChannelPanel();
+                    return;
+                }
+            }
+            if (mChannelPanel != null && event.getActionMasked() == MotionEvent.ACTION_UP && mChannelPanel.isOpen() && !mEdgeSwipeDone
+                    && !mChannelPanel.contains(event.getRawX(), event.getRawY())
+                    && Math.abs(event.getRawX() - mTapDownX) < 30 && Math.abs(event.getRawY() - mTapDownY) < 30) {
+                mChannelPanel.close();
+                mEdgeSwipeDone = true;
             }
             if (mLeftMenu != null && event.getActionMasked() == MotionEvent.ACTION_UP && mLeftMenu.isOpen() && !mEdgeSwipeDone
                     && !isOverlayShown() && !mLeftMenu.contains(event.getRawX(), event.getRawY())
