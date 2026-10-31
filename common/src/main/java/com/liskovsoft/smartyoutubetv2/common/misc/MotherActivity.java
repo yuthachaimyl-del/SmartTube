@@ -290,6 +290,7 @@ public class MotherActivity extends FragmentActivity {
         applyFullscreenModeIfNeeded();
 
         attachEdgeSlide();   // screens that set their content late (fragment-only screens)
+        hideWindowCaption();
 
         // Restore this activity's screensaver policy after returning to the foreground.
         mScreensaverManager.resume();
@@ -319,6 +320,52 @@ public class MotherActivity extends FragmentActivity {
         mCarFactor = getCarDensityFactor(this, newConfig); // e.g. split-screen resized
 
         applyCustomConfig();
+        hideWindowCaption();
+    }
+
+    @Override
+    public void onMultiWindowModeChanged(boolean isInMultiWindowMode) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode);
+        if (isInMultiWindowMode) {
+            hideWindowCaption();
+        } else if (mCaptionFlagAdded) {   // back to full screen: leave the system bars to the user's setting
+            mCaptionFlagAdded = false;
+            android.view.View decor = getWindow().getDecorView();
+            decor.setSystemUiVisibility(decor.getSystemUiVisibility() & ~android.view.View.SYSTEM_UI_FLAG_FULLSCREEN);
+        }
+    }
+
+    private boolean mCaptionFlagAdded;
+
+    /**
+     * Car build: as a window (PilotCar's 3:1 split) Android draws a title bar with maximize/close
+     * buttons over the top of the screen. It is hidden when the window asks for full screen, so ask
+     * for it (the system keeps its bars anyway in multi-window), and hide the bar itself as well.
+     */
+    private void hideWindowCaption() {
+        if (VERSION.SDK_INT < 24 || !isInMultiWindowMode()) {
+            return;
+        }
+        android.view.View decor = getWindow().getDecorView();
+        int vis = decor.getSystemUiVisibility();
+        if ((vis & android.view.View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+            mCaptionFlagAdded = true;
+            decor.setSystemUiVisibility(vis | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
+        if (!(decor instanceof android.view.ViewGroup)) {
+            return;
+        }
+        android.view.ViewGroup g = (android.view.ViewGroup) decor;
+        int captionId = getResources().getIdentifier("caption", "id", "android");
+        for (int i = 0; i < g.getChildCount() && captionId != 0; i++) {
+            android.view.View c = g.getChildAt(i);
+            if ("DecorCaptionView".equals(c.getClass().getSimpleName())) {
+                android.view.View bar = c.findViewById(captionId);
+                if (bar != null && bar.getVisibility() != android.view.View.GONE) {
+                    bar.setVisibility(android.view.View.GONE);
+                }
+            }
+        }
     }
 
     public ScreensaverManager getScreensaverManager() {
