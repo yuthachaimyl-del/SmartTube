@@ -117,7 +117,9 @@ public final class Slidr {
         // Setup the slider panel and attach it
         final SliderPanel panel = new SliderPanel(oldScreen.getContext(), oldScreen, config);
         panel.setId(R.id.slidable_panel);
-        oldScreen.setId(R.id.slidable_content);
+        if (oldScreen.getId() == View.NO_ID) {   // keep an id the screen already relies on (fragment containers)
+            oldScreen.setId(R.id.slidable_content);
+        }
 
         panel.addView(oldScreen);
         parent.addView(panel, 0, params);

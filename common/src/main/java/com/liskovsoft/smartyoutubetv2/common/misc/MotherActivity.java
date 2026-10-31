@@ -230,6 +230,7 @@ public class MotherActivity extends FragmentActivity {
     @Override
     protected void onPostCreate(@Nullable Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
+        attachEdgeSlide();
         addCarBackButton();
     }
 
@@ -287,6 +288,8 @@ public class MotherActivity extends FragmentActivity {
         applyCustomConfig();
 
         applyFullscreenModeIfNeeded();
+
+        attachEdgeSlide();   // screens that set their content late (fragment-only screens)
 
         // Restore this activity's screensaver policy after returning to the foreground.
         mScreensaverManager.resume();
@@ -550,7 +553,49 @@ public class MotherActivity extends FragmentActivity {
                 })
                 .build();
 
-        // Attach to this activity
-        Slidr.attach(this, config);
+        // Car build: attached to the screen's own content later (see attachEdgeSlide), not to the window root.
+        mEdgeSlideConfig = config;
+    }
+
+    private SlidrConfig mEdgeSlideConfig;
+    private boolean mEdgeSlideAttached;
+
+    /**
+     * Puts the edge-swipe panel around the screen's content view. Slidr.attach() would instead move the
+     * window's content root into its panel, and Android's own DecorView then crashes the moment the
+     * window becomes a freeform window (PilotCar's 3:1 split): it expects the content root to be its
+     * direct child when it adds the window caption.
+     */
+    private void attachEdgeSlide() {
+        if (mEdgeSlideConfig == null || mEdgeSlideAttached) {
+            return;
+        }
+        android.view.ViewGroup content = findViewById(android.R.id.content);
+        if (content == null) {
+            return;
+        }
+        android.view.View screen = null;
+        for (int i = 0; i < content.getChildCount(); i++) {   // the screen itself, not our own small overlays
+            android.view.View v = content.getChildAt(i);
+            Object tag = v.getTag();
+            if ("car_back_button".equals(tag) || "car_now_playing".equals(tag)) {
+                continue;
+            }
+            screen = v;
+            break;
+        }
+        if (screen == null) {
+            return;
+        }
+        if (screen.getId() == com.r0adkll.slidr.R.id.slidable_panel) {
+            mEdgeSlideAttached = true;
+            return;
+        }
+        try {
+            Slidr.replace(screen, mEdgeSlideConfig);
+            mEdgeSlideAttached = true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
