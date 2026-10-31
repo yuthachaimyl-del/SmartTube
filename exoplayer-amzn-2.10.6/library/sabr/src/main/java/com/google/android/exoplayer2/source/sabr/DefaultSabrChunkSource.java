@@ -734,6 +734,14 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
         long startTimeUs = isSabrTimeSet ? startTimeMs * 1_000L : C.TIME_UNSET;
         long endTimeUs = isSabrTimeSet ? startTimeUs + (durationMs * 1_000L) : C.TIME_UNSET;
+        if (!isSabrTimeSet) {
+            // Car build: the segment times aren't known yet (a format's first request, e.g. the one with the init
+            // segment). The end must still be a real time: TIME_UNSET made ExoPlayer's buffered-duration math overflow
+            // whenever the position wasn't 0 (resuming a video, a quality change mid-video), so it stopped loading
+            // after this first piece and the video stalled. The start stays unset (decode-only up to the seek point).
+            endTimeUs = seekTimeUs != C.TIME_UNSET ? seekTimeUs
+                    : pendingSeekTimeUs != C.TIME_UNSET ? pendingSeekTimeUs : 0;
+        }
         long clippedEndTimeUs = C.TIME_UNSET;
         int segmentCount = C.INDEX_UNSET; // TODO: replace with SABR value?
         //long startTimeUs = representationHolder.getSegmentStartTimeUs(firstSegmentNum);

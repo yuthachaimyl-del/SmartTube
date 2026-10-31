@@ -156,6 +156,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             return;
         }
 
+        int droppedInWindow = mWinDropped;
         int frames = mWinDropped + mWinRendered;
         float ratio = frames > 0 ? mWinDropped / (float) frames : 0;
         resetWindow();
@@ -164,13 +165,13 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         }
         if (ratio >= 0.25f) {
             mStrikes = 2;
-        } else if (ratio >= 0.06f && mWinDropped >= 6) {
+        } else if (ratio >= 0.06f && droppedInWindow >= 6) {
             mStrikes++;
         } else {
             mStrikes = 0;
         }
         if (ratio >= 0.02f) {
-            CarPerf.log(String.format(Locale.US, "dropped frames %.0f%% (%d of %d)", ratio * 100, mWinDropped, frames));
+            CarPerf.log(String.format(Locale.US, "dropped frames %.0f%% (%d of %d)", ratio * 100, droppedInWindow, frames));
         }
         if (mStrikes >= 2) {
             mStrikes = 0;
