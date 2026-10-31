@@ -309,8 +309,9 @@ public class SabrManifest implements FilterableManifest<SabrManifest> {
                 ? selectedVideoFormat.bitrate : selectedAudioFormat != null ? selectedAudioFormat.bitrate : -1;
 
         FormatId formatId = getFormatSelector(trackType).getSelectedFormatId();
-        long startTimeMs = isInit ? 0 : seekTimeUs != C.TIME_UNSET
-                ? seekTimeUs / 1_000 : activeStream.getSegmentStartTimeMs(formatId != null ? formatId.getItag() : -1);
+        // Car build: an init request that also brings the first media (seekTimeUs set) starts at the seek position
+        long startTimeMs = seekTimeUs != C.TIME_UNSET ? seekTimeUs / 1_000
+                : isInit ? 0 : activeStream.getSegmentStartTimeMs(formatId != null ? formatId.getItag() : -1);
 
         ClientAbrState.Builder clientAbrStateBuilder = ClientAbrState.newBuilder()
                 .setSabrForceMaxNetworkInterruptionDurationMs(0)

@@ -116,6 +116,8 @@ android {
             // Car build: installs next to the regular SmartTube
             applicationIdSuffix ".car"
             versionNameSuffix "-car"
+            // Car build: run at full speed. A debuggable app runs with fewer runtime optimizations (slower UI and parsing).
+            debuggable false
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
             }

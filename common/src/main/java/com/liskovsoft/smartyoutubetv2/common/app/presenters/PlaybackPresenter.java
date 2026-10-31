@@ -124,8 +124,13 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
 
         // Car build: start fetching the video's stream info right away, while the player screen opens.
         // The player's own request then finds it ready (same cache) - the video starts sooner.
+        // Not while another video is loaded: saving that video's watch position needs its stream info too, and
+        // the cache holds one video - they pushed each other out and the info was fetched three times.
         com.liskovsoft.smartyoutubetv2.common.car.CarPerf.start("video " + video.videoId);
-        prefetchFormatInfo(video);
+        Video loaded = getView() != null ? getVideo() : null;
+        if (loaded == null || loaded.videoId == null || loaded.videoId.equals(video.videoId)) {
+            prefetchFormatInfo(video);
+        }
 
         onNewVideo(video);
 

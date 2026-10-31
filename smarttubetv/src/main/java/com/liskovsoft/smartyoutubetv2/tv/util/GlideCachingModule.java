@@ -13,7 +13,8 @@ import com.bumptech.glide.module.AppGlideModule;
  */
 @GlideModule
 public class GlideCachingModule extends AppGlideModule {
-    private final static long CACHE_SIZE = 10 * 1024 * 1024; // 10 MB
+    // Car build: 100 MB (was 10 MB) - thumbnails seen before come from storage instead of the mobile network
+    private final static long CACHE_SIZE = 100 * 1024 * 1024;
 
     @Override
     public void applyOptions(Context context, GlideBuilder builder) {

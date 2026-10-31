@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
+import com.google.android.exoplayer2.ParserException;
 import com.google.android.exoplayer2.SeekParameters;
 import com.google.android.exoplayer2.extractor.Extractor;
 import com.google.android.exoplayer2.extractor.TrackOutput;
@@ -40,6 +41,7 @@ import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.HttpDataSource.InvalidResponseCodeException;
+import com.google.android.exoplayer2.upstream.Loader;
 import com.google.android.exoplayer2.upstream.LoaderErrorThrower;
 import com.google.android.exoplayer2.upstream.TransferListener;
 import com.google.android.exoplayer2.util.Assertions;
@@ -128,6 +130,9 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     private final Map<String, String> sabrHeaders;
     private int nexChunkIdx = -1;
     private long pendingSeekTimeUs = C.TIME_UNSET;
+    /** Car build: the media chunk that also carries the init segment (see canLoadInitWithMedia) */
+    @Nullable private Chunk initWithMediaChunk;
+    private static volatile boolean sInitWithMediaBroken;
 
     /**
      * @param manifestLoaderErrorThrower Throws errors affecting loading of manifests.
@@ -334,6 +339,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             return;
         }
 
+        boolean withInit = false;
         if (representationHolder.extractorWrapper != null) {
             Representation selectedRepresentation = representationHolder.representation;
             RangedUri pendingInitializationUri = null;
@@ -347,11 +353,18 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             //}
             //if (pendingInitializationUri != null || pendingIndexUri != null) {
             if (pendingInitializationUri != null) {
-                // We have initialization and/or index requests to make.
-                out.chunk = newInitializationChunk(representationHolder, dataSource,
-                        trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
-                        trackSelection.getSelectionData(), pendingInitializationUri, pendingIndexUri);
-                return;
+                if (canLoadInitWithMedia(queue)) {
+                    // Car build: at the start, one request brings the init segment and the first media together and the
+                    // media chunk reads both. A separate init request cost one more server round trip, and its
+                    // response carried the first seconds of media too, which the init chunk threw away (downloaded twice).
+                    withInit = true;
+                } else {
+                    // We have initialization and/or index requests to make.
+                    out.chunk = newInitializationChunk(representationHolder, dataSource,
+                            trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
+                            trackSelection.getSelectionData(), pendingInitializationUri, pendingIndexUri);
+                    return;
+                }
             }
         }
 
@@ -449,11 +462,49 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                         C.INDEX_UNSET, // TODO: does sabr has segment num?
                         //segmentNum,
                         //maxSegmentCount,
-                        seekTimeUs);
+                        seekTimeUs,
+                        withInit);
+        if (withInit) {
+            initWithMediaChunk = out.chunk;
+        }
+    }
+
+    /**
+     * Car build: the init segment can come with the first media only at the very start (or a seek before anything was
+     * loaded) of a regular video. Quality switches and live streams keep the separate init request.
+     */
+    private boolean canLoadInitWithMedia(List<? extends MediaChunk> queue) {
+        return !sInitWithMediaBroken && queue.isEmpty() && sabrStream != null && !manifest.dynamic;
+    }
+
+    /** Car build: if the combined first request ever goes wrong, go back to separate init requests for good. */
+    private void checkInitWithMedia(Chunk chunk, @Nullable Exception error) {
+        if (chunk != initWithMediaChunk) {
+            return;
+        }
+        initWithMediaChunk = null;
+
+        boolean noInit = false;
+        if (error == null) {
+            int index = trackSelection.indexOf(chunk.trackFormat);
+            RepresentationHolder holder = index >= 0 && index < representationHolders.length ? representationHolders[index] : null;
+            noInit = holder != null && holder.extractorWrapper != null && holder.extractorWrapper.getSampleFormats() == null;
+        }
+
+        // A plain network failure or a server control signal says nothing about the request itself
+        Throwable cause = error != null ? error.getCause() : null;
+        boolean controlSignal = cause instanceof SabrReloadPlayerError || cause instanceof SabrBackoffError;
+        boolean broken = noInit || (error != null && !controlSignal && (error instanceof ParserException
+                || error instanceof Loader.UnexpectedLoaderException || !(error instanceof IOException)));
+        if (broken) {
+            Log.e(TAG, "Init segment with the first media failed. Using separate init requests from now on. " + error);
+            sInitWithMediaBroken = true;
+        }
     }
 
     @Override
     public void onChunkLoadCompleted(Chunk chunk) {
+        checkInitWithMedia(chunk, null);
         if (chunk instanceof InitializationChunk) {
             InitializationChunk initializationChunk = (InitializationChunk) chunk;
             int trackIndex = trackSelection.indexOf(initializationChunk.trackFormat);
@@ -480,6 +531,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     @Override
     public boolean onChunkLoadError(Chunk chunk, boolean cancelable, Exception e, long blacklistDurationMs) {
         Log.e(TAG, "Chunk load failed: " + e.getMessage());
+        checkInitWithMedia(chunk, e);
 
         // A reload request is not a transport failure. Handing it back as "handled" would
         // retry the very same request at full speed. Let it fall through to the
@@ -640,7 +692,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             Object trackSelectionData,
             long firstSegmentNum,
             //int maxSegmentCount,
-            long seekTimeUs) {
+            long seekTimeUs,
+            boolean withInit) {
         Representation representation = representationHolder.representation;
         if (representationHolder.extractorWrapper == null) {
             DataSpec dataSpec = new DataSpec(
@@ -694,7 +747,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 //segmentUri.resolveUri(baseUrl),
                 DataSpec.HTTP_METHOD_POST,
                 //sabrStream.createVideoPlaybackAbrRequest(trackType, false).toByteArray(),
-                manifest.createVideoPlaybackAbrRequest(trackType, false, seekTimeUs).toByteArray(),
+                manifest.createVideoPlaybackAbrRequest(trackType, withInit, seekTimeUs).toByteArray(),
                 0, 0, C.LENGTH_UNSET,
                 //segmentUri.start,
                 //segmentUri.start,
@@ -703,7 +756,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 0,
                 sabrHeaders);
         long sampleOffsetUs = -representation.presentationTimeOffsetUs;
-        Log.e(TAG, "Load media chunk: track=" + trackType + ", rn=" + manifest.getSabrRequestNumber()
+        Log.e(TAG, "Load media chunk" + (withInit ? " with init" : "") + ": track=" + trackType + ", rn=" + manifest.getSabrRequestNumber()
                 + ", startTimeMs=" + startTimeMs + ", backoffTimeMs=" + sabrStream.getBackoffTimeMs());
         return new ContainerMediaChunk(
                 dataSource,

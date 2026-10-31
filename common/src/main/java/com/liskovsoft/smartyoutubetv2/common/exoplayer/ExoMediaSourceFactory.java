@@ -284,6 +284,8 @@ public class ExoMediaSourceFactory {
      * Use OkHttp for networking
      */
     private HttpDataSource.Factory buildOkHttpDataSourceFactory(DefaultBandwidthMeter bandwidthMeter, int readTimeoutMs) {
+        // Car build: video data must reach the player as it arrives (no debug logging that waits for the whole response)
+        com.liskovsoft.smartyoutubetv2.common.car.CarNet.removeDebugLogging();
         OkHttpClient client = OkHttpManager.instance().getClient();
         if (readTimeoutMs != client.readTimeoutMillis()) {
             client = client.newBuilder().readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS).build(); // shares the connection pool

@@ -91,6 +91,8 @@ public class SplashPresenter extends BasePresenter<SplashView> {
             RxHelper.setupGlobalErrorHandler();
             initGlobalPrefs();
             initProxy();
+            // Car build: after the prefs and the proxy (the network client is built with them), before any request
+            com.liskovsoft.smartyoutubetv2.common.car.CarNet.removeDebugLogging();
             initVideoStateService();
             initStreamReminderService();
         }
