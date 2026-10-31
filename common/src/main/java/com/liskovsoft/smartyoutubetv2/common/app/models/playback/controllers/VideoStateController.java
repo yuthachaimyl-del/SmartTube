@@ -660,6 +660,12 @@ public class VideoStateController extends BasePlayerController {
 
         float newVolume = getPlayerData().getPlayerVolume();
 
+        // Car build: auto sound - full level, no per-video volume normalization (set the loudness on the car)
+        if (com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.isPureAudio()) {
+            getPlayer().setVolume(Math.min(newVolume, 1f));
+            return;
+        }
+
         if (getPlayerTweaksData().isPlayerAutoVolumeEnabled()) {
             //newVolume *= getVideo().volume;
             //newVolume = getVideo().volume;

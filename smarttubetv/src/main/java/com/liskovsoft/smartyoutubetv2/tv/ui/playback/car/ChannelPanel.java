@@ -190,6 +190,7 @@ public final class ChannelPanel {
 
     /** Opens with a title; the videos come with {@link #setItems}. */
     public void open(String channelName) {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         mOpen = true;
         mTitle.setText(channelName != null ? channelName : "ช่องนี้");
         setItems(null, "กำลังโหลด…");
@@ -206,6 +207,7 @@ public final class ChannelPanel {
     }
 
     public void close() {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         if (!mOpen) {
             return;
         }

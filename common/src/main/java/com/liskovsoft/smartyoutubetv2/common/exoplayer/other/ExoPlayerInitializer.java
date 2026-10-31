@@ -128,8 +128,9 @@ public class ExoPlayerInitializer {
                 baseBuilder.setBackBuffer(minBufferMs, true);
                 break;
             case PlayerData.BUFFER_MEDIUM:
-                //minBufferMs = 30_000;
-                //maxBufferMs = 30_000;
+                // Car build: keep 50-60 s ahead (was 30 s) so a weak-signal stretch of road doesn't stop the video
+                minBufferMs = 50_000;
+                maxBufferMs = 60_000;
                 break;
             case PlayerData.BUFFER_LOW:
                 minBufferMs = 5_000; // LIVE fix
@@ -149,6 +150,11 @@ public class ExoPlayerInitializer {
     }
 
     private void setupVolumeBoost(SimpleExoPlayer player) {
+        // Car build: auto sound plays the stream as it is - no loudness effect (it compresses the dynamics)
+        if (com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.isPureAudio()) {
+            mVolumeBoost = 1f;
+            return;
+        }
         // 5.1 audio cannot be boosted (format isn't supported error)
         // also, other 2.0 tracks in 5.1 group is already too loud. so cancel them too.
         float volume = mPlayerTweaksData.isPlayerAutoVolumeEnabled() ? mPlayerData.getPlayerVolume() * 2.0f : mPlayerData.getPlayerVolume();

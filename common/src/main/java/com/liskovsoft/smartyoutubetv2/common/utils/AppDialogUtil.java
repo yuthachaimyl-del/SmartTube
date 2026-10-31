@@ -314,6 +314,10 @@ public class AppDialogUtil {
     }
 
     private static void setFormat(FormatItem formatItem, PlayerData playerData, Runnable onFormatSelected) {
+        if (formatItem != null && formatItem.isPreset()) {
+            // Car build: a preset is a fixed quality - auto picture off
+            com.liskovsoft.smartyoutubetv2.common.exoplayer.selector.AdaptiveQuality.setEnabled(false);
+        }
         if (playerData.isLegacyCodecsForced()) {
             playerData.setLegacyCodecsForced(false);
         }

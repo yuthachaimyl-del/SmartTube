@@ -61,6 +61,68 @@ public final class CarCodecs {
         return result;
     }
 
+    private static final Map<String, Boolean> sSmooth = new HashMap<>();
+
+    /**
+     * Whether the unit's hardware decoder for this codec says it keeps up with this picture size and frame rate
+     * (its performance points, Android 10+; else its declared size/rate limits). Null when it can't tell.
+     */
+    public static synchronized Boolean supportsSmooth(String mime, int width, int height, float fps) {
+        if (mime == null || width <= 0 || height <= 0) {
+            return null;
+        }
+        int rate = Math.max(1, Math.round(fps > 0 ? fps : 30));
+        String key = mime + " " + width + "x" + height + "@" + rate;
+        if (sSmooth.containsKey(key)) {
+            return sSmooth.get(key);
+        }
+        Boolean result = null;
+        try {
+            for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+                if (info.isEncoder() || !isHardware(info) || !supportsType(info, mime)) {
+                    continue;
+                }
+                MediaCodecInfo.VideoCapabilities video = info.getCapabilitiesForType(mime).getVideoCapabilities();
+                if (video == null) {
+                    continue;
+                }
+                boolean ok;
+                if (Build.VERSION.SDK_INT >= 29 && video.getSupportedPerformancePoints() != null
+                        && !video.getSupportedPerformancePoints().isEmpty()) {
+                    MediaCodecInfo.VideoCapabilities.PerformancePoint need =
+                            new MediaCodecInfo.VideoCapabilities.PerformancePoint(width, height, rate);
+                    ok = false;
+                    for (MediaCodecInfo.VideoCapabilities.PerformancePoint point : video.getSupportedPerformancePoints()) {
+                        if (point.covers(need)) {
+                            ok = true;
+                            break;
+                        }
+                    }
+                } else {
+                    ok = video.areSizeAndRateSupported(width, height, rate)
+                            || video.areSizeAndRateSupported(height, width, rate);
+                }
+                result = result == null ? ok : (result || ok);
+            }
+        } catch (Throwable e) {
+            result = null;
+        }
+        sSmooth.put(key, result);
+        if (Boolean.FALSE.equals(result)) {
+            CarPerf.log("decoder for " + mime + " can't keep up with " + key.substring(mime.length() + 1));
+        }
+        return result;
+    }
+
+    private static boolean supportsType(MediaCodecInfo info, String mime) {
+        for (String type : info.getSupportedTypes()) {
+            if (type.equalsIgnoreCase(mime)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isHardware(MediaCodecInfo info) {
         if (Build.VERSION.SDK_INT >= 29) {
             return info.isHardwareAccelerated() && !info.isSoftwareOnly();
@@ -70,7 +132,7 @@ public final class CarCodecs {
                 || n.contains(".sw.") || n.endsWith(".sw"));
     }
 
-    private static String mimeOf(Format f) {
+    static String mimeOf(Format f) {
         String mime = f.sampleMimeType;
         if (mime == null && f.codecs != null) {
             mime = MimeTypes.getVideoMediaMimeType(f.codecs);

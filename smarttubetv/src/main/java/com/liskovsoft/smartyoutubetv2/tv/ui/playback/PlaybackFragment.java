@@ -785,6 +785,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDebugInfoManager.show(false);
             mDebugInfoManager = null;
         }
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.detach();
         mPlayerInitializer.release();
         // Fix access calls when player isn't initialized
         mExoPlayerController.release();
@@ -842,6 +843,14 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         if (mDualScreen != null) {
             mDualScreen.setPlayer(mPlayer);
+        }
+
+        // Car build: auto picture/sound - the audio language the user picked, and stutter watching (steps down once)
+        if (trackSelector instanceof RestoreTrackSelector) {
+            final android.content.Context appContext = getContext() != null ? getContext().getApplicationContext() : null;
+            ((RestoreTrackSelector) trackSelector).setAudioLanguageSource(() -> appContext != null
+                    ? com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData.instance(appContext).getAudioLanguage() : null);
+            com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.attach(mPlayer, (RestoreTrackSelector) trackSelector);
         }
     }
 

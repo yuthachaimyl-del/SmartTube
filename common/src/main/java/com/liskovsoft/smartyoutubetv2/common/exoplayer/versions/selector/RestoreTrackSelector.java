@@ -39,6 +39,28 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
         mCallback = callback;
     }
 
+    /** Car build: the audio language the user picked (null = the original track). */
+    public interface LanguageSource {
+        @Nullable String get();
+    }
+
+    private LanguageSource mAudioLanguage;
+
+    public void setAudioLanguageSource(LanguageSource source) {
+        mAudioLanguage = source;
+    }
+
+    /** Car build: runs the track selection again (auto picture steps down after dropped frames or stalls). */
+    public void reselect() {
+        invalidate();
+    }
+
+    /** Car build: the player's network speed estimate (bits per second), -1 if unknown. */
+    public long getBitrateEstimate() {
+        com.google.android.exoplayer2.upstream.BandwidthMeter meter = getBandwidthMeter();
+        return meter != null ? meter.getBitrateEstimate() : -1;
+    }
+
     // Exo 2.9
     //@Nullable
     //@Override
@@ -127,8 +149,20 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     @Override
     protected Definition selectVideoTrack(TrackGroupArray groups, int[][] formatSupports, int mixedMimeTypeAdaptationSupports,
                                               Parameters params, boolean enableAdaptiveTrackSelection) throws ExoPlaybackException {
-        // Car build: auto quality that follows the network speed
+        // Car build: auto picture - one quality per video, the best this unit plays smoothly (see CarAutoQuality)
         if (AdaptiveQuality.isEnabled()) {
+            Definition auto = null;
+            try {
+                auto = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.pickVideo(groups, formatSupports, getBitrateEstimate());
+            } catch (Throwable e) {
+                Log.e(TAG, "Auto picture failed: " + e);
+            }
+            if (auto != null) {
+                if (mCallback != null) {
+                    mCallback.updateVideoTrackSelection(groups, params, auto);
+                }
+                return auto;
+            }
             Parameters adaptiveParams = params.buildUpon()
                     .setMaxVideoSize(AdaptiveQuality.MAX_WIDTH, AdaptiveQuality.MAX_HEIGHT)
                     .build();
@@ -181,6 +215,24 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     @Override
     protected Pair<Definition, AudioTrackScore> selectAudioTrack(TrackGroupArray groups, int[][] formatSupports,
                                                                  int mixedMimeTypeAdaptationSupports, Parameters params, boolean enableAdaptiveTrackSelection) throws ExoPlaybackException {
+        // Car build: auto sound - the best original stream, nothing applied to it (see CarAutoQuality)
+        if (AdaptiveQuality.isAudioAuto()) {
+            Definition auto = null;
+            try {
+                String language = mAudioLanguage != null ? mAudioLanguage.get() : null;
+                auto = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.pickAudio(groups, formatSupports, language);
+            } catch (Throwable e) {
+                Log.e(TAG, "Auto sound failed: " + e);
+            }
+            if (auto != null) {
+                if (mCallback != null) {
+                    mCallback.updateAudioTrackSelection(groups, params, auto);
+                }
+                int index = auto.tracks[0];
+                return new Pair<>(auto, new AudioTrackScore(auto.group.getFormat(index), params, formatSupports[groups.indexOf(auto.group)][index]));
+            }
+        }
+
         if (mCallback != null) {
             Pair<Definition, MediaTrack> resultPair = mCallback.onSelectAudioTrack(groups, params);
             if (resultPair != null) {

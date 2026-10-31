@@ -638,6 +638,7 @@ public final class SidePanel {
     }
 
     public void open() {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         List<Video> items = mHost.getSuggestions();
         if (!mLeft && (items == null || items.isEmpty()) && mSearch == null) {
             android.widget.Toast.makeText(mCtx, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
@@ -666,6 +667,7 @@ public final class SidePanel {
     }
 
     public void close() {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         if (!mOpen) {
             return;
         }

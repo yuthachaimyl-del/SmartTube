@@ -577,6 +577,12 @@ public class TrackSelectorManager implements TrackSelectorCallback {
             return;
         }
 
+        if (rendererIndex == RENDERER_INDEX_AUDIO && !renderer.isDisabled && AdaptiveQuality.isAudioAuto()) {
+            // Car build: auto sound, no fixed override (see RestoreTrackSelector.selectAudioTrack)
+            mTrackSelector.setParameters(mTrackSelector.buildUponParameters().clearSelectionOverrides(rendererIndex));
+            return;
+        }
+
         if (selectedTrack != null && selectedTrack.groupIndex != -1) {
             Log.d(TAG, "Setting override for renderer %s, group %s, track %s...", rendererIndex, selectedTrack.groupIndex, selectedTrack.trackIndex);
 

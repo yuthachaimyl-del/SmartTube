@@ -398,6 +398,7 @@ public final class DualScreen {
     private int mTargetDisplayId = -1;
 
     private void show(Display display) {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         mShowing = true;
         sCurrent = this;
         android.util.DisplayMetrics m = new android.util.DisplayMetrics();
@@ -485,6 +486,7 @@ public final class DualScreen {
     }
 
     private void hide() {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
         mShowing = false;
         mMainVideo.removeCallbacks(mActivityTimeout);
         LeanbackPlayerAdapter.sOverrideSurface = null;

@@ -87,12 +87,30 @@ public class HQDialogController extends BasePlayerController {
                     UiOptionItem.setChecked(item, false);
                 }
             }
-            videoOptions.add(0, UiOptionItem.from("Auto (follows network speed)", optionItem -> {
+            String now = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.currentVideo();
+            videoOptions.add(0, UiOptionItem.from("อัตโนมัติ: ภาพสวยและลื่นที่สุด (แนะนำ)"
+                    + (AdaptiveQuality.isEnabled() && now != null ? "  •  ตอนนี้ " + now : ""), optionItem -> {
                 AdaptiveQuality.setEnabled(true);
                 if (getPlayer() != null) {
                     getPlayer().showOverlay(false);
                 }
             }, AdaptiveQuality.isEnabled()));
+        }
+
+        // Car build: auto sound - the best original stream, nothing applied to it
+        List<OptionItem> audioOptions = UiOptionItem.from(audioFormats, this::selectFormatOption,
+                getContext().getString(R.string.option_disabled));
+        if (audioOptions != null) {
+            audioOptions = new ArrayList<>(audioOptions);
+            if (AdaptiveQuality.isAudioAuto()) {
+                for (OptionItem item : audioOptions) {
+                    UiOptionItem.setChecked(item, false);
+                }
+            }
+            String now = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.currentAudio();
+            audioOptions.add(0, UiOptionItem.from("อัตโนมัติ: เสียงต้นฉบับดีที่สุด ไม่ผ่านการปรับแต่ง (แนะนำ)"
+                    + (AdaptiveQuality.isAudioAuto() && now != null ? "  •  ตอนนี้ " + now : ""),
+                    optionItem -> AdaptiveQuality.setAudioAuto(true), AdaptiveQuality.isAudioAuto()));
         }
         addCategoryInt(OptionCategory.from(
                 VIDEO_FORMATS_ID,
@@ -103,7 +121,7 @@ public class HQDialogController extends BasePlayerController {
                 AUDIO_FORMATS_ID,
                 OptionCategory.TYPE_RADIO_LIST,
                 audioFormatsTitle,
-                UiOptionItem.from(audioFormats, this::selectFormatOption, getContext().getString(R.string.option_disabled))));
+                audioOptions));
     }
 
     private void selectFormatOption(OptionItem option) {
@@ -114,6 +132,8 @@ public class HQDialogController extends BasePlayerController {
         FormatItem formatItem = UiOptionItem.toFormat(option);
         if (formatItem.getType() == FormatItem.TYPE_VIDEO) {
             AdaptiveQuality.setEnabled(false); // a fixed quality was picked
+        } else if (formatItem.getType() == FormatItem.TYPE_AUDIO) {
+            AdaptiveQuality.setAudioAuto(false); // a fixed audio format was picked
         }
         getPlayer().setFormat(formatItem);
         persistFormat(formatItem);
