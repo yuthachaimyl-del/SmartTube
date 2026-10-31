@@ -252,6 +252,43 @@ public final class SidePanel {
         return Math.max(min, Math.min(max, v));
     }
 
+    /**
+     * Puts the video frame (it keeps the video's own shape) in the middle of the given area of its parent; null = the
+     * whole parent. A FrameLayout centers a child in the parent and then moves it by (left margin - right margin), so
+     * the margins carry how far the area's middle is from the parent's middle.
+     */
+    public static void placeInArea(View view, @androidx.annotation.Nullable android.graphics.Rect area) {
+        if (view == null || !(view.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) view.getLayoutParams();
+        View parent = view.getParent() instanceof View ? (View) view.getParent() : null;
+        lp.leftMargin = lp.topMargin = lp.rightMargin = lp.bottomMargin = 0;
+        if (area == null) {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.CENTER;
+        } else if (parent == null || parent.getWidth() == 0 || parent.getHeight() == 0) {
+            // Not laid out yet: the area's corner
+            lp.width = area.width();
+            lp.height = area.height();
+            lp.leftMargin = area.left;
+            lp.topMargin = area.top;
+            lp.gravity = Gravity.TOP | Gravity.START;
+        } else {
+            int dx = (area.left + area.right) / 2 - parent.getWidth() / 2;
+            int dy = (area.top + area.bottom) / 2 - parent.getHeight() / 2;
+            lp.width = area.width();
+            lp.height = area.height();
+            lp.leftMargin = Math.max(0, dx);
+            lp.rightMargin = Math.max(0, -dx);
+            lp.topMargin = Math.max(0, dy);
+            lp.bottomMargin = Math.max(0, -dy);
+            lp.gravity = Gravity.CENTER;
+        }
+        view.setLayoutParams(lp);
+    }
+
     /** dp scaled to the window (text, pictures, buttons of the list). */
     private int sdp(float v) {
         return dp(v * mScale);

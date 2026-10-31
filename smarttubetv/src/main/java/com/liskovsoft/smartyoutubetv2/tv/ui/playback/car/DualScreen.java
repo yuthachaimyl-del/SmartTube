@@ -702,24 +702,12 @@ public final class DualScreen {
             if (mFrame == null || mRootView == null) {
                 return;
             }
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mFrame.getLayoutParams();
+            SidePanel.placeInArea(mFrame, area);
             if (area == null) {
-                lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-                lp.leftMargin = 0;
-                lp.topMargin = 0;
-                lp.gravity = Gravity.CENTER;
-                mFrame.setLayoutParams(lp);
                 applyScale();
                 return;
             }
-            lp.width = area.width();
-            lp.height = area.height();
-            lp.leftMargin = area.left;
-            lp.topMargin = area.top;
-            lp.gravity = Gravity.TOP | Gravity.START;
             mFrame.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-            mFrame.setLayoutParams(lp);
         }
 
         View build(Context ctx) {

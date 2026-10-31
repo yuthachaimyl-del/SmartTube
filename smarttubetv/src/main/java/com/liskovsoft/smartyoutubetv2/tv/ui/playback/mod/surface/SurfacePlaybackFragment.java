@@ -302,21 +302,8 @@ public class SurfacePlaybackFragment extends PlaybackSupportFragment {
         if (root == null || mVideoSurfaceRoot == null) {
             return;
         }
-        FrameLayout.LayoutParams videoParams = (FrameLayout.LayoutParams) mVideoSurfaceRoot.getLayoutParams();
-        if (area == null) {
-            videoParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            videoParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            videoParams.leftMargin = 0;
-            videoParams.topMargin = 0;
-            videoParams.gravity = Gravity.CENTER;
-        } else {
-            videoParams.width = area.width();
-            videoParams.height = area.height();
-            videoParams.leftMargin = area.left;
-            videoParams.topMargin = area.top;
-            videoParams.gravity = Gravity.TOP | Gravity.START;
-        }
-        mVideoSurfaceRoot.setLayoutParams(videoParams);
+        // Car build: the video sits in the middle of the area next to the open list (was: in its top corner)
+        com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.placeInArea(mVideoSurfaceRoot, area);
 
         if (mLeanbackSubtitles != null && mLeanbackSubtitles.getLayoutParams() instanceof FrameLayout.LayoutParams) {
             FrameLayout.LayoutParams subsParams = (FrameLayout.LayoutParams) mLeanbackSubtitles.getLayoutParams();
