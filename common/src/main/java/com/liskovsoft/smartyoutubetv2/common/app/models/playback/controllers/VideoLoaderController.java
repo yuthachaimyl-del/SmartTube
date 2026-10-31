@@ -185,6 +185,8 @@ public class VideoLoaderController extends BasePlayerController {
 
     @Override
     public void onSuggestionItemClicked(Video item) {
+        // Car build: time the next video from the lists too (from tap to the first picture)
+        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.start("next video " + (item != null ? item.videoId : null));
         openVideoInt(item);
 
         if (getPlayer() != null)
