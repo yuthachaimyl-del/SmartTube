@@ -11,11 +11,13 @@ public final class CarPerf {
     private static final String TAG = "CarPerf";
     private static volatile long sStartMs;
     private static volatile boolean sFirstFrameSeen;
+    private static volatile boolean sAnyStart;
 
     private CarPerf() {
     }
 
     public static void start(String what) {
+        sAnyStart = true;
         sStartMs = SystemClock.elapsedRealtime();
         sFirstFrameSeen = false;
         Log.i(TAG, "start: " + what);
@@ -34,6 +36,11 @@ public final class CarPerf {
             sFirstFrameSeen = true;
             mark("first frame");
         }
+    }
+
+    /** Whether a video was opened since the app started. */
+    public static boolean isAnyVideoStarted() {
+        return sAnyStart;
     }
 
     public static void log(String msg) {

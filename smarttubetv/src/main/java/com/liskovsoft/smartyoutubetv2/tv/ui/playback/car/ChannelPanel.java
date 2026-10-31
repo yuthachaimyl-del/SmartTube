@@ -135,7 +135,7 @@ public final class ChannelPanel {
         mRootH = h;
         if (w > 0 && h > 0) {
             float d = density();
-            mScale = Math.max(0.6f, Math.min(1f, Math.min((h / d) / 720f, (w / d) / 1000f)));
+            mScale = Math.max(0.6f, Math.min(SidePanel.MAX_SCALE, Math.min((h / d) / 720f, (w / d) / 1000f)));
         }
         mHeader.setPadding(sdp(20), 0, sdp(8), sdp(6));
         mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, sdp(30));

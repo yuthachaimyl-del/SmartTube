@@ -227,14 +227,14 @@ public final class SidePanel {
             float panelDp = Math.max(wDp * PANEL_FRACTION, Math.min(MIN_PANEL_DP, wDp * 0.55f));
             mPanelW = Math.round(panelDp * d);
             mPanelH = h;
-            mScale = clamp(Math.min(panelDp / FULL_PANEL_DP, hDp / 720f), 0.6f, 1f);
+            mScale = clamp(Math.min(panelDp / FULL_PANEL_DP, hDp / 720f), 0.6f, MAX_SCALE);
             int videoLeft = mLeft ? mPanelW : 0;
             mVideoArea.set(videoLeft, 0, videoLeft + (w - mPanelW), h);
         } else {
             int videoH = Math.min(Math.round(w * 9f / 16f), Math.round(h * 0.5f));
             mPanelW = w;
             mPanelH = h - videoH;
-            mScale = clamp(Math.min(wDp / FULL_PANEL_DP, (mPanelH / d) / 560f), 0.6f, 1f);
+            mScale = clamp(Math.min(wDp / FULL_PANEL_DP, (mPanelH / d) / 560f), 0.6f, MAX_SCALE);
             mVideoArea.set(0, 0, w, videoH);
         }
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mPanel.getLayoutParams();
@@ -247,6 +247,9 @@ public final class SidePanel {
             mHost.setVideoArea(new android.graphics.Rect(mVideoArea));
         }
     }
+
+    /** Big windows with few dots per inch (the passenger screen: 2400x896 at 160 dpi) get a bigger list. */
+    static final float MAX_SCALE = 1.3f;
 
     private static float clamp(float v, float min, float max) {
         return Math.max(min, Math.min(max, v));
