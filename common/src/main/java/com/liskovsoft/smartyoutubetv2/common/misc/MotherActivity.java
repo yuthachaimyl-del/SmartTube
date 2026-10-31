@@ -352,7 +352,15 @@ public class MotherActivity extends FragmentActivity {
             mCaptionFlagAdded = true;
             decor.setSystemUiVisibility(vis | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
-        if (!(decor instanceof android.view.ViewGroup)) {
+        // The system adds the title bar right after this callback, so look again a moment later too.
+        hideCaptionBar();
+        decor.post(this::hideCaptionBar);
+        decor.postDelayed(this::hideCaptionBar, 500);
+    }
+
+    private void hideCaptionBar() {
+        android.view.View decor = getWindow().getDecorView();
+        if (!(decor instanceof android.view.ViewGroup) || isFinishing()) {
             return;
         }
         android.view.ViewGroup g = (android.view.ViewGroup) decor;
