@@ -109,8 +109,8 @@ public class ExoPlayerInitializer {
         // Default values
         int minBufferMs = 30_000;
         int maxBufferMs = 30_000;
-        int bufferForPlaybackMs = 2_500;
-        int bufferForPlaybackAfterRebufferMs = 5_000;
+        int bufferForPlaybackMs = 1_000; // Car build: start playing after 1 s of video (was 2.5 s), like the YouTube app
+        int bufferForPlaybackAfterRebufferMs = 3_000; // Car build: resume sooner after a stall (was 5 s)
 
         switch (mPlayerData.getVideoBufferType()) {
             case PlayerData.BUFFER_HIGHEST:

@@ -122,10 +122,30 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
             //getController(VideoStateController.class).saveState();
         }
 
+        // Car build: start fetching the video's stream info right away, while the player screen opens.
+        // The player's own request then finds it ready (same cache) - the video starts sooner.
+        prefetchFormatInfo(video);
+
         onNewVideo(video);
 
         getViewManager().startView(PlaybackView.class);
         mIsEmbedPlayerStarted = false;
+    }
+
+    private static String sPrefetchedId;
+
+    private static void prefetchFormatInfo(Video video) {
+        if (video == null || video.videoId == null || video.videoId.equals(sPrefetchedId)) {
+            return;
+        }
+        sPrefetchedId = video.videoId;
+        try {
+            com.liskovsoft.youtubeapi.service.YouTubeServiceManager.instance().getMediaItemService()
+                    .getFormatInfoObserve(video.videoId)
+                    .subscribe(info -> sPrefetchedId = null, error -> sPrefetchedId = null);
+        } catch (Throwable ignored) {
+            sPrefetchedId = null;
+        }
     }
 
     public Video getVideo() {
