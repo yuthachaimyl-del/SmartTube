@@ -47,6 +47,8 @@ public final class NowPlayingBar {
         if (a instanceof PlaybackActivity) {
             return;
         }
+        // Car build: get the playback token ready in the background, so the first video starts fast
+        com.liskovsoft.smartyoutubetv2.common.car.CarWarmup.playback();
         stopTick();
         sTick = new Runnable() {
             @Override

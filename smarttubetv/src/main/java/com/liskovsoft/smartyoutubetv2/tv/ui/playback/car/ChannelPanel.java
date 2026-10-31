@@ -42,6 +42,12 @@ public final class ChannelPanel {
     private final Adapter mAdapter = new Adapter();
     private float mDensity;
     private boolean mOpen;
+    // auto-fit: full size on the car's full screen, a bit smaller in a split screen
+    private float mScale = 1f;
+    private int mRootW, mRootH;
+    private TextView mCloseView, mLatestView;
+    private LinearLayout mHeader;
+    private RecyclerView mList;
 
     public ChannelPanel(Activity activity, ViewGroup root, Host host) {
         this(activity, activity, root, host);
@@ -63,41 +69,38 @@ public final class ChannelPanel {
         LinearLayout header = new LinearLayout(ctx);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(20), 0, dp(8), dp(6));
+        mHeader = header;
         mTitle = new TextView(ctx);
         mTitle.setTextColor(Color.WHITE);
         mTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(22));
         mTitle.setSingleLine(true);
         mTitle.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(mTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView close = new TextView(ctx);
+        mCloseView = close;
         close.setText("✕");
         close.setTextColor(Color.WHITE);
         close.setGravity(Gravity.CENTER);
-        close.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(26));
         close.setOnClickListener(v -> close());
         header.addView(close, new LinearLayout.LayoutParams(dp(56), dp(52)));
         mPanel.addView(header);
 
         TextView latest = new TextView(ctx);
+        mLatestView = latest;
         latest.setText("วิดีโอล่าสุด");
         latest.setTextColor(0xFFCCCCCC);
-        latest.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(17));
-        latest.setPadding(dp(20), 0, 0, dp(8));
         mPanel.addView(latest);
 
         FrameLayout listBox = new FrameLayout(ctx);
         RecyclerView list = new RecyclerView(ctx);
+        mList = list;
         list.setLayoutManager(new LinearLayoutManager(ctx, LinearLayoutManager.HORIZONTAL, false));
         list.setAdapter(mAdapter);
-        list.setPadding(dp(12), 0, dp(12), 0);
         list.setClipToPadding(false);
         list.setFocusable(false);
         listBox.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         mEmpty = new TextView(ctx);
         mEmpty.setTextColor(0xFFAAAAAA);
-        mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(18));
         mEmpty.setGravity(Gravity.CENTER);
         listBox.addView(mEmpty, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200)));
         mPanel.addView(listBox);
@@ -118,9 +121,56 @@ public final class ChannelPanel {
 
         root.addView(mPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != mRootW || b - t != mRootH) {
+                v.post(() -> fitTo(v.getWidth(), v.getHeight()));
+            }
+        });
+        fitTo(root.getWidth(), root.getHeight());
+    }
+
+    /** Text and cards follow the window: full size on the car's screen, smaller in a split screen. */
+    private void fitTo(int w, int h) {
+        mRootW = w;
+        mRootH = h;
+        if (w > 0 && h > 0) {
+            float d = density();
+            mScale = Math.max(0.6f, Math.min(1f, Math.min((h / d) / 720f, (w / d) / 1000f)));
+        }
+        mHeader.setPadding(sdp(20), 0, sdp(8), sdp(6));
+        mTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, sdp(30));
+        mCloseView.setTextSize(TypedValue.COMPLEX_UNIT_PX, sdp(34));
+        ViewGroup.LayoutParams cp = mCloseView.getLayoutParams();
+        if (cp != null) {
+            cp.width = sdp(64);
+            cp.height = sdp(60);
+            mCloseView.setLayoutParams(cp);
+        }
+        mLatestView.setTextSize(TypedValue.COMPLEX_UNIT_PX, sdp(22));
+        mLatestView.setPadding(sdp(20), 0, 0, sdp(8));
+        mList.setPadding(sdp(12), 0, sdp(12), 0);
+        mEmpty.setTextSize(TypedValue.COMPLEX_UNIT_PX, sdp(24));
+        mAdapter.notifyDataSetChanged();
+    }
+
+    private int sdp(float v) {
+        return dp(v * mScale);
+    }
+
+    /** Card width: full size on wide windows, at most ~45% of a narrow one (2+ cards stay visible). */
+    private int cardWidth() {
+        int w = sdp(320);
+        if (mRootW > 0) {
+            w = Math.min(w, Math.round(mRootW * 0.45f));
+        }
+        return w;
     }
 
     private int dp(float v) {
+        return Math.round(v * density());
+    }
+
+    private float density() {
         if (mDensity <= 0) {
             float d = 0;
             try {
@@ -131,7 +181,7 @@ public final class ChannelPanel {
             }
             mDensity = d > 0 ? d : mCtx.getResources().getDisplayMetrics().density;
         }
-        return Math.round(v * mDensity);
+        return mDensity;
     }
 
     public boolean isOpen() {
@@ -144,7 +194,7 @@ public final class ChannelPanel {
         mTitle.setText(channelName != null ? channelName : "ช่องนี้");
         setItems(null, "กำลังโหลด…");
         mPanel.setVisibility(View.VISIBLE);
-        mPanel.setTranslationY(-dp(420));
+        mPanel.setTranslationY(-(mPanel.getHeight() > 0 ? mPanel.getHeight() : dp(520)));
         mPanel.animate().translationY(0).setDuration(220).start();
     }
 
@@ -202,12 +252,12 @@ public final class ChannelPanel {
         private final TextView mName;
         private final TextView mSub;
         private Video mVideo;
+        private int mSizedCard = -1;
 
         Holder(ViewGroup parent) {
             super(new LinearLayout(parent.getContext()));
             LinearLayout card = (LinearLayout) itemView;
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(8), 0, dp(8), 0);
             card.setLayoutParams(new RecyclerView.LayoutParams(dp(272), ViewGroup.LayoutParams.WRAP_CONTENT));
             mThumb = new ImageView(parent.getContext());
             mThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -215,14 +265,11 @@ public final class ChannelPanel {
             card.addView(mThumb, new LinearLayout.LayoutParams(dp(256), dp(144)));
             mName = new TextView(parent.getContext());
             mName.setTextColor(Color.WHITE);
-            mName.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(19));
             mName.setMaxLines(2);
             mName.setEllipsize(TextUtils.TruncateAt.END);
-            mName.setPadding(0, dp(8), 0, 0);
             card.addView(mName);
             mSub = new TextView(parent.getContext());
             mSub.setTextColor(0xFFAAAAAA);
-            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(15));
             mSub.setMaxLines(1);
             mSub.setEllipsize(TextUtils.TruncateAt.END);
             card.addView(mSub);
@@ -234,7 +281,29 @@ public final class ChannelPanel {
             });
         }
 
+        private void fit() {
+            int card = cardWidth();
+            if (card == mSizedCard) {
+                return;
+            }
+            mSizedCard = card;
+            int pad = Math.max(dp(4), Math.round(card * 0.025f));
+            itemView.setPadding(pad, 0, pad, 0);
+            RecyclerView.LayoutParams lp = (RecyclerView.LayoutParams) itemView.getLayoutParams();
+            lp.width = card;
+            itemView.setLayoutParams(lp);
+            LinearLayout.LayoutParams tp = (LinearLayout.LayoutParams) mThumb.getLayoutParams();
+            tp.width = card - pad * 2;
+            tp.height = Math.round(tp.width * 9f / 16f);
+            mThumb.setLayoutParams(tp);
+            float k = card / (float) dp(320);   // text follows the card size
+            mName.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(dp(16), dp(28) * k));
+            mName.setPadding(0, sdp(8), 0, 0);
+            mSub.setTextSize(TypedValue.COMPLEX_UNIT_PX, Math.max(dp(13), dp(22) * k));
+        }
+
         void bind(Video v) {
+            fit();
             mVideo = v;
             mName.setText(v.getTitle());
             CharSequence sub = v.getSecondTitle();

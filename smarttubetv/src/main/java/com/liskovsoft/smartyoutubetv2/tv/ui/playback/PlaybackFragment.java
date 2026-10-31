@@ -316,7 +316,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
                         @Override public java.util.List<Video> getSuggestions() { return collectSuggestions(); }
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
-                        @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
+                        @Override public void setVideoArea(android.graphics.Rect area) { PlaybackFragment.this.setVideoArea(area); }
                     });
             mSidePanel.setSearch((query, panel) -> {
                 if (mSidePanelSearch != null) {
@@ -336,7 +336,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
                         @Override public java.util.List<Video> getSuggestions() { return null; }
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
-                        @Override public void setVideoFraction(float fraction, boolean right) { PlaybackFragment.this.setVideoFraction(fraction, right); }
+                        @Override public void setVideoArea(android.graphics.Rect area) { PlaybackFragment.this.setVideoArea(area); }
                     }, true, "PiloTube",
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Tabs() {
                         @Override public String[] titles() { return com.liskovsoft.smartyoutubetv2.common.car.CarSections.TITLES; }
@@ -831,6 +831,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         DefaultRenderersFactory renderersFactory = new CustomOverridesRenderersFactory(getContext());
         mPlayer = mPlayerInitializer.createPlayer(getContext(), renderersFactory, trackSelector);
+        // Car build: timing of the video start (logcat "CarPerf")
+        mPlayer.addVideoListener(new com.google.android.exoplayer2.video.VideoListener() {
+            @Override public void onRenderedFirstFrame() {
+                com.liskovsoft.smartyoutubetv2.common.car.CarPerf.firstFrame();
+            }
+        });
 
         mExoPlayerController.setPlayer(mPlayer);
 

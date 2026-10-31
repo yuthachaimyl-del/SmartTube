@@ -575,8 +575,8 @@ public final class DualScreen {
                         mLibrary.play(video);
                     }
                 }
-                @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
-                    ScreenTwoUi.this.setVideoFraction(fraction, videoOnRight);
+                @Override public void setVideoArea(android.graphics.Rect area) {
+                    ScreenTwoUi.this.setVideoArea(area);
                 }
             };
             SidePanel.Host menuHost = new SidePanel.Host() {
@@ -586,8 +586,8 @@ public final class DualScreen {
                 @Override public void onVideoClicked(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video) {
                     nextHost.onVideoClicked(video);
                 }
-                @Override public void setVideoFraction(float fraction, boolean videoOnRight) {
-                    ScreenTwoUi.this.setVideoFraction(fraction, videoOnRight);
+                @Override public void setVideoArea(android.graphics.Rect area) {
+                    ScreenTwoUi.this.setVideoArea(area);
                 }
             };
             mNext = new SidePanel(mActivity, mCtx, mRootView, nextHost, false, "วิดีโอถัดไป", null);
@@ -697,21 +697,28 @@ public final class DualScreen {
             });
         }
 
-        /** A list is open: the video moves to one side (fit), back to the full screen when it closes. */
-        void setVideoFraction(float fraction, boolean videoOnRight) {
+        /** A list is open: the video keeps this part of the screen (fit); null = full screen again. */
+        void setVideoArea(android.graphics.Rect area) {
             if (mFrame == null || mRootView == null) {
                 return;
             }
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mFrame.getLayoutParams();
-            if (fraction >= 1f) {
+            if (area == null) {
                 lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                lp.leftMargin = 0;
+                lp.topMargin = 0;
                 lp.gravity = Gravity.CENTER;
+                mFrame.setLayoutParams(lp);
                 applyScale();
-            } else {
-                lp.width = Math.round(mRootView.getWidth() * fraction);
-                lp.gravity = (videoOnRight ? Gravity.END : Gravity.START) | Gravity.CENTER_VERTICAL;
-                mFrame.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                return;
             }
+            lp.width = area.width();
+            lp.height = area.height();
+            lp.leftMargin = area.left;
+            lp.topMargin = area.top;
+            lp.gravity = Gravity.TOP | Gravity.START;
+            mFrame.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
             mFrame.setLayoutParams(lp);
         }
 

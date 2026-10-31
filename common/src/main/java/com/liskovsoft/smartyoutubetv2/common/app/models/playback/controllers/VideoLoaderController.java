@@ -257,6 +257,7 @@ public class VideoLoaderController extends BasePlayerController {
 
         ServiceManager service = YouTubeServiceManager.instance();
         MediaItemService mediaItemManager = service.getMediaItemService();
+        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("player asks for stream info");
         mFormatInfoAction = mediaItemManager.getFormatInfoObserve(video.videoId)
                 .subscribe(this::processFormatInfo,
                            error -> {
@@ -266,6 +267,7 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     private void processFormatInfo(MediaItemFormatInfo formatInfo) {
+        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("stream info ready");
         PlaybackView player = getPlayer();
 
         if (player == null || getVideo() == null) {
@@ -299,6 +301,7 @@ public class VideoLoaderController extends BasePlayerController {
             loadNextVideo(5_000);
         } else if (acceptAdaptiveFormats(formatInfo) && formatInfo.containsDashFormats() && !preferSabrLive(formatInfo)) {
             Log.d(TAG, "Loading regular video in dash format...");
+            com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("player opens dash");
 
             if (getPlayerTweaksData().isHighBitrateFormatsEnabled() && formatInfo.hasExtendedHlsFormats()) {
                 player.openMerged(formatInfo, formatInfo.getHlsManifestUrl());
@@ -307,6 +310,7 @@ public class VideoLoaderController extends BasePlayerController {
             }
         } else if (acceptAdaptiveFormats(formatInfo) && formatInfo.containsSabrFormats()) {
             Log.d(TAG, "Loading video in sabr format...");
+            com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("player opens sabr");
             player.openSabr(formatInfo);
         } else if (acceptDashLive(formatInfo)) {
             Log.d(TAG, "Loading live video (current or past live stream) in dash format...");

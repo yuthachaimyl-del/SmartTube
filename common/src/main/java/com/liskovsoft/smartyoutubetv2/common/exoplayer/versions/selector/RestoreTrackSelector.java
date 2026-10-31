@@ -132,8 +132,17 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
             Parameters adaptiveParams = params.buildUpon()
                     .setMaxVideoSize(AdaptiveQuality.MAX_WIDTH, AdaptiveQuality.MAX_HEIGHT)
                     .build();
-            Definition definition = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports,
-                    adaptiveParams, true);
+            // Prefer codecs the unit decodes in hardware (software AV1 is slow on car units)
+            int[][] hardwareOnly = com.liskovsoft.smartyoutubetv2.common.car.CarCodecs.preferHardware(groups, formatSupports);
+            Definition definition = null;
+            if (hardwareOnly != null) {
+                definition = super.selectVideoTrack(groups, hardwareOnly, mixedMimeTypeAdaptationSupports,
+                        adaptiveParams, true);
+            }
+            if (definition == null) {
+                definition = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports,
+                        adaptiveParams, true);
+            }
             if (definition == null) { // nothing fits the cap: let ExoPlayer pick without it
                 definition = super.selectVideoTrack(groups, formatSupports, mixedMimeTypeAdaptationSupports, params, true);
             }

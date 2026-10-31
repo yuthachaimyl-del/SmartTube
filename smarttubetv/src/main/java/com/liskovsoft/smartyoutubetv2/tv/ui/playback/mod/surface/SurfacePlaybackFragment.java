@@ -293,6 +293,43 @@ public class SurfacePlaybackFragment extends PlaybackSupportFragment {
                 full ? mSubtitlesPadding : mSubtitlesPadding / 3, full ? Gravity.CENTER : side);
     }
 
+    /**
+     * Car build: the video keeps this part of the screen while a list is open (beside it on wide
+     * windows, above it on narrow ones); null = full screen again. Subtitles follow the video.
+     */
+    public void setVideoArea(android.graphics.Rect area) {
+        View root = getView();
+        if (root == null || mVideoSurfaceRoot == null) {
+            return;
+        }
+        FrameLayout.LayoutParams videoParams = (FrameLayout.LayoutParams) mVideoSurfaceRoot.getLayoutParams();
+        if (area == null) {
+            videoParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            videoParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            videoParams.leftMargin = 0;
+            videoParams.topMargin = 0;
+            videoParams.gravity = Gravity.CENTER;
+        } else {
+            videoParams.width = area.width();
+            videoParams.height = area.height();
+            videoParams.leftMargin = area.left;
+            videoParams.topMargin = area.top;
+            videoParams.gravity = Gravity.TOP | Gravity.START;
+        }
+        mVideoSurfaceRoot.setLayoutParams(videoParams);
+
+        if (mLeanbackSubtitles != null && mLeanbackSubtitles.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams subsParams = (FrameLayout.LayoutParams) mLeanbackSubtitles.getLayoutParams();
+            subsParams.width = area == null ? ViewGroup.LayoutParams.MATCH_PARENT : area.width();
+            subsParams.height = area == null ? ViewGroup.LayoutParams.MATCH_PARENT : area.height();
+            subsParams.leftMargin = area == null ? 0 : area.left;
+            subsParams.topMargin = area == null ? 0 : area.top;
+            subsParams.gravity = area == null ? Gravity.CENTER : Gravity.TOP | Gravity.START;
+            mLeanbackSubtitles.setLayoutParams(subsParams);
+            ViewUtil.setPadding(mLeanbackSubtitles, area == null ? mSubtitlesPadding : mSubtitlesPadding / 3);
+        }
+    }
+
     private float calculateAspectRatio() {
         return (mAspectRatio == 0 ? mVideoAspectRatio : mAspectRatio) * mPixelRatio;
     }

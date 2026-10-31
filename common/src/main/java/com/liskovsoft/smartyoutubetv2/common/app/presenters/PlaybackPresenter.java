@@ -124,6 +124,7 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
 
         // Car build: start fetching the video's stream info right away, while the player screen opens.
         // The player's own request then finds it ready (same cache) - the video starts sooner.
+        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.start("video " + video.videoId);
         prefetchFormatInfo(video);
 
         onNewVideo(video);
@@ -142,7 +143,10 @@ public class PlaybackPresenter extends BasePresenter<PlaybackView> implements Pl
         try {
             com.liskovsoft.youtubeapi.service.YouTubeServiceManager.instance().getMediaItemService()
                     .getFormatInfoObserve(video.videoId)
-                    .subscribe(info -> sPrefetchedId = null, error -> sPrefetchedId = null);
+                    .subscribe(info -> {
+                        sPrefetchedId = null;
+                        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("stream info fetched (early)");
+                    }, error -> sPrefetchedId = null);
         } catch (Throwable ignored) {
             sPrefetchedId = null;
         }
