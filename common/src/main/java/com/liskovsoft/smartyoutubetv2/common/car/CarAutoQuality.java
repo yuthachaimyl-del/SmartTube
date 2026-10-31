@@ -87,8 +87,16 @@ public final class CarAutoQuality {
         c = keep(c, groups, f -> CarCodecs.hasHardwareDecoder(CarCodecs.mimeOf(f)));
         c = keep(c, groups, f -> !isTenBit(f)); // HDR versions: car screens are SDR
         c = keep(c, groups, f -> shortSide(f) <= MAX_SHORT_SIDE);
-        c = keep(c, groups, f -> !Boolean.FALSE.equals(
+        // The decoder's own numbers: what it says it plays smoothly. Some units state too little - then up to 720p is
+        // tried anyway (the dropped-frame watch steps down if it really can't), rather than 480p for every 60 fps video.
+        List<int[]> declared = filter(c, groups, f -> !Boolean.FALSE.equals(
                 CarCodecs.supportsSmooth(CarCodecs.mimeOf(f), f.width, f.height, fps(f))));
+        if (!declared.isEmpty() && maxShortSide(declared, groups) >= 720) {
+            c = declared;
+        } else {
+            c = keep(c, groups, f -> shortSide(f) <= 720 || !Boolean.FALSE.equals(
+                    CarCodecs.supportsSmooth(CarCodecs.mimeOf(f), f.width, f.height, fps(f))));
+        }
         c = keep(c, groups, f -> !isTooHeavy(f));
         final int cap = sVideoBitrateCap;
         c = keep(c, groups, f -> f.bitrate <= 0 || f.bitrate <= cap);
@@ -316,6 +324,14 @@ public final class CarAutoQuality {
             }
         }
         return out;
+    }
+
+    private static int maxShortSide(List<int[]> list, TrackGroupArray groups) {
+        int max = 0;
+        for (int[] gt : list) {
+            max = Math.max(max, shortSide(format(groups, gt)));
+        }
+        return max;
     }
 
     private static Format format(TrackGroupArray groups, int[] gt) {
