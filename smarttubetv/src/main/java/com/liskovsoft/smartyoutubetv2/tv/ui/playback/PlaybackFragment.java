@@ -390,6 +390,9 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
                 @Override public java.util.List<androidx.leanback.widget.Action> actions() {
                     return mPlayerGlue != null ? mPlayerGlue.getCarActions() : new java.util.ArrayList<>();
                 }
+                @Override public java.util.List<java.util.List<androidx.leanback.widget.Action>> actionRows() {
+                    return mPlayerGlue != null ? mPlayerGlue.getCarActionRows() : new java.util.ArrayList<>();
+                }
                 @Override public void click(androidx.leanback.widget.Action action) {
                     if (mPlayerGlue != null) {
                         mPlayerGlue.clickCarAction(action);

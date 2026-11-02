@@ -331,6 +331,29 @@ public class VideoPlayerGlue extends MaxControlsVideoPlayerGlue<PlayerAdapter> i
         return out;
     }
 
+    /** Car build: the main screen's two rows of player buttons (top row, bottom row), for the second screen. */
+    public java.util.List<java.util.List<Action>> getCarActionRows() {
+        java.util.List<java.util.List<Action>> rows = new java.util.ArrayList<>();
+        if (getControlsRow() == null) {
+            return rows;
+        }
+        androidx.leanback.widget.ObjectAdapter[] adapters = {getControlsRow().getPrimaryActionsAdapter(),
+                getControlsRow().getSecondaryActionsAdapter()};
+        for (androidx.leanback.widget.ObjectAdapter a : adapters) {
+            java.util.List<Action> row = new java.util.ArrayList<>();
+            if (a != null) {
+                for (int i = 0; i < a.size(); i++) {
+                    Object o = a.get(i);
+                    if (o instanceof Action) { // all of them, play/pause, previous, next too (as on the main screen)
+                        row.add((Action) o);
+                    }
+                }
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+
     /** Car build: press a player button from the second screen, exactly like the main screen. */
     public void clickCarAction(Action action) {
         onActionClicked(action);

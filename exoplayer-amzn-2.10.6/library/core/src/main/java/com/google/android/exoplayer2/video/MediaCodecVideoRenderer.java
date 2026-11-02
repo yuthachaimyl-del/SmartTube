@@ -514,9 +514,23 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer {
       @State int state = getState();
       MediaCodec codec = getCodec();
       if (codec != null) {
+        boolean switched = false;
         if (Util.SDK_INT >= 23 && surface != null && !codecNeedsSetOutputSurfaceWorkaround) {
           setOutputSurfaceV23(codec, surface);
-        } else {
+          switched = true;
+        } else if (Util.SDK_INT >= 27 && surface != null) {
+          // Car build: moving the picture to another screen (main <-> screen 2 / mirror). The forced
+          // workaround is only needed for a missing surface (background); here just hand the running
+          // decoder the new surface instead of stopping and rebuilding it (that took a while and froze
+          // the playback thread). Falls back to the rebuild if this decoder refuses.
+          try {
+            setOutputSurfaceV23(codec, surface);
+            switched = true;
+          } catch (RuntimeException e) {
+            Log.w(TAG, "setOutputSurface failed, rebuilding the decoder", e);
+          }
+        }
+        if (!switched) {
           releaseCodecAsync = surface == null; // Car build: going to the background, don't stall the audio
           try {
             releaseCodec();

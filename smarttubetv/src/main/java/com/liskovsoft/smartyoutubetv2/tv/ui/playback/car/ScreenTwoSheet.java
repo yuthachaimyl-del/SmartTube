@@ -353,6 +353,11 @@ final class ScreenTwoSheet implements CarState.DialogSink {
         return box;
     }
 
+    /** A player button pressed in the second screen's controls (same handling as the tiles here). */
+    void clickAction(Action a, boolean longClick) {
+        onActionClicked(a, longClick);
+    }
+
     private void onActionClicked(Action a, boolean longClick) {
         long id = a.getId();
         if (id == R.id.action_channel && !longClick) {

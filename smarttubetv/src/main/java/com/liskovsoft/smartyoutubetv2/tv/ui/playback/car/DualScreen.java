@@ -39,6 +39,8 @@ public final class DualScreen {
         void play(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video);
         /** The main screen's player buttons. */
         java.util.List<androidx.leanback.widget.Action> actions();
+        /** The same buttons in the main screen's two rows. */
+        java.util.List<java.util.List<androidx.leanback.widget.Action>> actionRows();
         void click(androidx.leanback.widget.Action action);
         void longClick(androidx.leanback.widget.Action action);
     }
@@ -754,7 +756,17 @@ public final class DualScreen {
             root.addView(mFrame, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
             buildPanels();
-            mControls = new ScreenTwoControls(ctx, mActivity, root, () -> mPlayer, mPanels);
+            mControls = new ScreenTwoControls(ctx, mActivity, root, () -> mPlayer, mPanels,
+                    new ScreenTwoControls.Buttons() {
+                        @Override public java.util.List<java.util.List<androidx.leanback.widget.Action>> rows() {
+                            return mLibrary != null ? mLibrary.actionRows() : new java.util.ArrayList<>();
+                        }
+                        @Override public void click(androidx.leanback.widget.Action action, boolean longClick) {
+                            if (mSheet != null) {
+                                mSheet.clickAction(action, longClick);
+                            }
+                        }
+                    });
             mSheet = new ScreenTwoSheet(ctx, root, new ScreenTwoSheet.Host() {
                 @Override public java.util.List<androidx.leanback.widget.Action> actions() {
                     return mLibrary != null ? mLibrary.actions() : new java.util.ArrayList<>();
