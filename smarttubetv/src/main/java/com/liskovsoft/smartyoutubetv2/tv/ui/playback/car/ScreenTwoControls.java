@@ -22,7 +22,7 @@ import com.google.android.exoplayer2.SimpleExoPlayer;
 /**
  * Car build: touch controls on the second screen, like the main screen: tap the video to show them
  * (they hide after 5 s), previous / back 10 s / play-pause / forward 10 s / next, a seek bar, speed,
- * double-tap the left or right side to skip 10 s, swipe in from the right edge for the next videos
+ * double-tap the left or right side to skip 10 s, swipe up or in from the right edge for the next videos
  * and from the left edge for the SmartTube menu (also as buttons in the top bar).
  */
 final class ScreenTwoControls {
@@ -192,6 +192,14 @@ final class ScreenTwoControls {
                         mSwiped = true;
                         setShown(false);
                         mPanels.openChannel();
+                        return true;
+                    }
+                    // swipe up on the video: the next videos to pick from (like swiping up on the main screen)
+                    if (!mSwiped && !mPanels.anyOpen() && mDownY > h * 0.3f && mDownY - e.getY() > h * 0.18f
+                            && mDownY - e.getY() > Math.abs(dx) * 2) {
+                        mSwiped = true;
+                        setShown(false);
+                        mPanels.openNext();
                         return true;
                     }
                     if (!mSwiped && !mPanels.anyOpen() && Math.abs(dx) > w * 0.12f && Math.abs(dx) > dy * 1.5f) {
