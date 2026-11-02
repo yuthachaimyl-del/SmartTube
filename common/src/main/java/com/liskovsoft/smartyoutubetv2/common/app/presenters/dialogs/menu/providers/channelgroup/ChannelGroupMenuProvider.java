@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.menu.providers.channelgroup;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.content.Context;
 import android.net.Uri;
 
@@ -93,7 +94,7 @@ public class ChannelGroupMenuProvider extends ContextMenuProvider {
 
                         if (Helpers.startsWith(newValue, "http")) {
                             RxHelper.execute(mService.importGroupsObserve(Uri.parse(newValue)), this::pinGroups,
-                                    error -> MessageHelpers.showLongMessage(getContext(), error.getMessage()));
+                                    error -> MessageHelpers.showLongMessage(getContext(), CarErrors.text(getContext(), error)));
                         } else {
                             ItemGroup group = mService.createChannelGroup(newValue, null,
                                     Collections.singletonList(mService.createChannel(item.getAuthor(), item.cardImageUrl, item.channelId)));

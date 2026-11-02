@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.presenters;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.text.TextUtils;
@@ -1205,6 +1206,7 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
             }
 
             Utils.postDelayed(mRefreshSection, 30_000);
+            CarErrors.whenOnline(getContext(), mRefreshSection);   // car build: reload when the signal is back
         }
     }
 

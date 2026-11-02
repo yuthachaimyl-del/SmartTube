@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.annotation.SuppressLint;
 
 import com.google.android.exoplayer2.source.sabr.parser.exceptions.SabrBackoffError;
@@ -35,17 +36,41 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         mVideoLoaderController = getController(VideoLoaderController.class);
     }
 
+    private final Runnable mResumeWhenOnline = () -> {
+        if (getPlayer() != null && mVideoLoaderController != null && !isStreamEnded()) {
+            mVideoLoaderController.reloadVideo();
+        }
+    };
+
     @Override
     public void onEngineError(int type, int rendererIndex, Throwable error) {
         Log.e(TAG, "Player error occurred: %s. Trying to fix…", type);
 
         mBufferingDetector.reset();
+
+        // Car build: lost the signal. Settings are fine; reload the same video once it is back.
+        if (!CarErrors.isOnline(getContext()) && (error == null || CarErrors.isNetwork(error))) {
+            Log.w(TAG, "Player error while offline: waiting for the signal");
+            MessageHelpers.showMessage(getContext(), CarErrors.noInternet(getContext()));
+            CarErrors.whenOnline(getContext(), mResumeWhenOnline);
+            return;
+        }
+
         runEngineErrorAction(type, rendererIndex, error);
     }
 
     @Override
     public void onLongBuffering() {
         if (getPlayer() == null) {
+            return;
+        }
+
+        // Car build: no signal (tunnel, dead zone) is not a broken client or DNS. Don't switch settings or restart
+        // the app; keep the video and carry on loading when the signal is back.
+        if (!isStreamEnded() && !CarErrors.isOnline(getContext())) {
+            Log.w(TAG, "Long buffering while offline: waiting for the signal");
+            MessageHelpers.showMessage(getContext(), CarErrors.noInternet(getContext()));
+            CarErrors.whenOnline(getContext(), mResumeWhenOnline);
             return;
         }
 
@@ -64,7 +89,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             if (!isCustomDnsActive && !getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
                 // Wrong DNS resolving could cause hanging at start
                 // Do switch to only engine that respects custom DNS settings
-                MessageHelpers.showLongMessage(getContext(), "Fixing incorrect DNS resolution. App restart needed...");
+                Log.w(TAG, "Fixing incorrect DNS resolution. App restart needed...");
                 getPlayerTweaksData().setPlayerDataSource(requiredEngine);
                 getPlayerTweaksData().setPreferredDnsType(customDns);
                 if (!isCustomDnsEnabled) {
@@ -75,7 +100,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
                 }
             } else {
                 // Also, some clients like ANDROID_REEL may just hang at start
-                MessageHelpers.showLongMessage(getContext(), "Fixing stalled client...");
+                Log.w(TAG, "Fixing stalled client...");
                 YouTubeServiceManager.instance().switchNextClientNow();
                 mVideoLoaderController.reloadVideo();
             }
@@ -179,7 +204,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             return false;
         }
 
-        MessageHelpers.showLongMessage(getContext(), "%s. Attempt: %s", reloadError.getMessage(), mSabrErrorFixAttempts);
+        Log.w(TAG, "%s. Attempt: %s", reloadError.getMessage(), mSabrErrorFixAttempts); // car build: silent retry
 
         YouTubeServiceManager.instance().reloadPlayerResponse(video.videoId, reloadError.reloadPlaybackToken);
         mVideoLoaderController.reloadVideo();
@@ -214,7 +239,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             return false;
         }
 
-        MessageHelpers.showLongMessage(getContext(), "%s. Attempt: %s", backoffError.getMessage(), mSabrErrorFixAttempts);
+        Log.w(TAG, "%s. Attempt: %s", backoffError.getMessage(), mSabrErrorFixAttempts); // car build: silent retry
 
         // SABR may hang if the server issues a high backoffTime
         mVideoLoaderController.reloadVideo();
@@ -311,9 +336,11 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         }
 
         if (showMessage) {
-            MessageHelpers.showLongMessage(getContext(), errorMessage);
+            Log.e(TAG, errorMessage);
+            String friendly = CarErrors.text(getContext(), error); // car build: no raw error text
+            MessageHelpers.showLongMessage(getContext(), friendly);
             if (getPlayer() != null) {
-                getPlayer().setTitle(errorContent);
+                getPlayer().setTitle(friendly);
             }
         }
 

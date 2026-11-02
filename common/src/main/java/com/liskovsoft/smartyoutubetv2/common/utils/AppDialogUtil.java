@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.utils;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
@@ -997,7 +998,7 @@ public class AppDialogUtil {
             if (FILE_PICKER_REQUEST_CODE == requestCode && resultCode == Activity.RESULT_OK) {
                 String filePath = data.getStringExtra(FilePickerActivity.RESULT_FILE_PATH);
                 RxHelper.execute(mService.importGroupsObserve(new File(filePath)), result -> pinGroups(context, result),
-                        error -> MessageHelpers.showLongMessage(context, error.getMessage()));
+                        error -> MessageHelpers.showLongMessage(context, CarErrors.clean(context, error.getMessage())));
             }
         });
         return activity;
@@ -1133,7 +1134,7 @@ public class AppDialogUtil {
         }
 
         // Handle error: Maximum playlist size exceeded (> 5000 items)
-        RxHelper.execute(editObserve, error -> MessageHelpers.showLongMessage(context, error.getMessage()));
+        RxHelper.execute(editObserve, error -> MessageHelpers.showLongMessage(context, CarErrors.clean(context, error.getMessage())));
     }
 
     public static void showPlaylistOrderDialog(Context context, Video video, Runnable onClose) {

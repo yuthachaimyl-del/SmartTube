@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.errors;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.content.Context;
 
 import androidx.annotation.Nullable;
@@ -26,10 +27,9 @@ public class CategoryEmptyError implements ErrorFragmentData {
     @Override
     public String getMessage() {
         String result = mContext.getString(R.string.msg_cant_load_content);
-        if (mError != null && !Helpers.containsAny(mError.getMessage(), "fromNullable result is null")) {
-            String className = mError.getClass().getSimpleName();
-            result = String.format("%s: %s", className, Utils.getStackTraceAsString(mError));
-            //result = mError.getMessage();
+        if (mError != null && !Helpers.containsAny(mError.getMessage(), "fromNullable result is null")
+                && !Helpers.startsWith(mError.getMessage(), "AuthError")) {
+            result = CarErrors.text(mContext, mError);   // car build: no raw error text on screen
         }
         return result;
     }

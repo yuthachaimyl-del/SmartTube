@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.text.TextUtils;
 import android.util.Pair;
 
@@ -263,7 +264,7 @@ public class SuggestionsController extends BasePlayerController {
                             String message = error.getMessage();
                             Log.e(TAG, "loadSuggestions error: %s", message);
                             if (!Helpers.containsAny(message, "fromNullable result is null")) {
-                                MessageHelpers.showLongMessage(getContext(), "loadSuggestions error: %s", message);
+                                MessageHelpers.showLongMessage(getContext(), CarErrors.text(getContext(), error));
                             }
                             error.printStackTrace();
                         }

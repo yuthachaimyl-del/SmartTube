@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.common.app.models.playback.controllers;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.content.Context;
 import android.util.Pair;
 
@@ -182,7 +183,7 @@ public class CommentsController extends BasePlayerController {
         receiver.sync(myCommentItem);
 
         RxHelper.execute(
-                getCommentsService().toggleLikeObserve(commentItem.getNestedCommentsKey()), e -> MessageHelpers.showMessage(getContext(), e.getMessage()));
+                getCommentsService().toggleLikeObserve(commentItem.getNestedCommentsKey()), e -> MessageHelpers.showMessage(getContext(), CarErrors.text(getContext(), e)));
     }
 
     private static final class MyCommentItem implements CommentItem {

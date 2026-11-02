@@ -1,5 +1,6 @@
 package com.liskovsoft.smartyoutubetv2.tv.ui.main;
 
+import com.liskovsoft.smartyoutubetv2.common.car.CarErrors;
 import android.os.Build.VERSION;
 
 import androidx.annotation.NonNull;
@@ -147,7 +148,7 @@ public class MainApplication extends MultiDexApplication implements Configuratio
 
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
             if (shouldIgnore(e)) {
-                MessageHelpers.showLongMessage(this, e.getMessage());
+                MessageHelpers.showLongMessage(this, CarErrors.text(this, e));
                 return;
             }
 

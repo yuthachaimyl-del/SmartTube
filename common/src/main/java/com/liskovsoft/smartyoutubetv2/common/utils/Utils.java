@@ -1311,7 +1311,10 @@ public class Utils {
     }
 
     public static boolean fixRetrofitErrors(@NonNull Context context, Throwable error) {
-        if (error != null && Helpers.contains(error.getMessage(), "No address associated with hostname")) {
+        // Car build: with no signal at all this error is normal. Switching DNS and restarting the app then only
+        // throws the user out of what they were doing, so only do it when the device says it is online.
+        if (error != null && Helpers.contains(error.getMessage(), "No address associated with hostname")
+                && com.liskovsoft.smartyoutubetv2.common.car.CarErrors.isOnline(context)) {
             // java.net.UnknownHostException: Unable to resolve host "www.youtube.com": No address associated with hostname
             PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
             int customDns = PlayerTweaksData.DNS_TYPE_IPV4;
