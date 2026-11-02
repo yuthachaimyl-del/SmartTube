@@ -151,6 +151,9 @@ public class ViewManager {
                 try {
                     Log.d(TAG, "Launching parent activity: " + parentActivity.getSimpleName());
                     Intent intent = new Intent(activity, parentActivity);
+                    // Car build: the pages are singleTop now - bring the existing one back instead of piling up a
+                    // new copy after every video
+                    intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
 
                     safeStartActivity(activity, intent);
                 } catch (ActivityNotFoundException e) {
@@ -410,7 +413,7 @@ public class ViewManager {
         } catch (IllegalArgumentException | ActivityNotFoundException | IndexOutOfBoundsException | NullPointerException | SecurityException e) {
             // NPE: Attempt to write to field 'boolean com.android.server.am.ActivityStack.mConfigWillChange' on a null object reference
             Log.e(TAG, "Error when starting activity: %s", e.getMessage());
-            MessageHelpers.showLongMessage(context, e.getLocalizedMessage());
+            MessageHelpers.showLongMessage(context, com.liskovsoft.smartyoutubetv2.common.car.CarErrors.clean(context, e.getLocalizedMessage()));
         }
     }
 

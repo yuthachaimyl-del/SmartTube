@@ -229,6 +229,23 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     private com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.ChannelPanel mChannelPanel;
+
+    /** Car build: closes an open list over the video. True when one was open (Back is used up). */
+    public boolean closeCarPanels() {
+        if (mChannelPanel != null && mChannelPanel.isOpen()) {
+            mChannelPanel.close();
+            return true;
+        }
+        if (mLeftMenu != null && mLeftMenu.isOpen()) {
+            mLeftMenu.close();
+            return true;
+        }
+        if (mSidePanel != null && mSidePanel.isOpen()) {
+            mSidePanel.close();
+            return true;
+        }
+        return false;
+    }
     private io.reactivex.disposables.Disposable mChannelLoad;
 
     private void openChannelPanel() {
@@ -1528,6 +1545,20 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         super.onDestroy();
 
         Log.d(TAG, "Destroying PlaybackFragment...");
+
+        // Car build: stop list loading and close the lists (a voice search can't outlive the screen)
+        for (io.reactivex.disposables.Disposable d : new io.reactivex.disposables.Disposable[]{mLeftMenuLoad, mChannelLoad, mSidePanelSearch}) {
+            if (d != null) {
+                d.dispose();
+            }
+        }
+        try {
+            if (mChannelPanel != null) mChannelPanel.close();
+            if (mLeftMenu != null) mLeftMenu.close();
+            if (mSidePanel != null) mSidePanel.close();
+        } catch (Exception e) {
+            Log.e(TAG, "closing car panels: %s", e.getMessage());
+        }
 
         // Fix situations when engine didn't properly destroyed.
         // E.g. after closing dialogs.

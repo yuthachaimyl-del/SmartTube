@@ -419,14 +419,20 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
         Log.e(TAG, fullMsg);
 
         if (!Helpers.containsAny(message, "fromNullable result is null")) {
-            MessageHelpers.showLongMessage(getContext(), fullMsg);
+            String friendly = CarErrors.text(getContext(), error); // car build: no raw error text
+            MessageHelpers.showLongMessage(getContext(), friendly);
             if (getPlayer() != null) {
-                getPlayer().setTitle(fullMsg);
+                getPlayer().setTitle(friendly);
             }
+            CarErrors.whenOnline(getContext(), mResumeWhenOnline);
         }
 
         if (Utils.fixRetrofitErrors(getContext(), error)) {
             return;
+        }
+
+        if (!CarErrors.isOnline(getContext())) {
+            return; // car build: reloaded by whenOnline() once the signal is back, not in a loop now
         }
 
         if (Helpers.containsAny(message, "Unexpected token", "Syntax error", "invalid argument") || // temporal fix

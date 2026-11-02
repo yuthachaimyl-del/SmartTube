@@ -66,7 +66,12 @@ public class BackgroundPlaybackService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand: %s", Helpers.toString(intent));
 
-        return super.onStartCommand(intent, flags, startId);
+        // Car build: never brought back by the system on its own (e.g. after the car is switched off and the app
+        // was killed) - that would show "กำลังเล่นเสียง" with nothing playing.
+        if (intent == null) {
+            stopSelf();
+        }
+        return START_NOT_STICKY;
     }
 
     public static void start(Context context) {

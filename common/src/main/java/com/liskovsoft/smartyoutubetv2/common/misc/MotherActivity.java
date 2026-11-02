@@ -621,8 +621,13 @@ public class MotherActivity extends FragmentActivity {
      * window becomes a freeform window (PilotCar's 3:1 split): it expects the content root to be its
      * direct child when it adds the window caption.
      */
+    /** Car build: screens with their own edge gestures turn the Back swipe off. */
+    protected boolean isEdgeSlideEnabled() {
+        return true;
+    }
+
     private void attachEdgeSlide() {
-        if (mEdgeSlideConfig == null || mEdgeSlideAttached) {
+        if (mEdgeSlideConfig == null || mEdgeSlideAttached || !isEdgeSlideEnabled()) {
             return;
         }
         android.view.ViewGroup content = findViewById(android.R.id.content);

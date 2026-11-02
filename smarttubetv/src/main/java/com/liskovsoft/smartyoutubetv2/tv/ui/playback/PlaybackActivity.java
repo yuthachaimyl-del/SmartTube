@@ -180,6 +180,21 @@ public class PlaybackActivity extends LeanbackActivity {
      * BACK pressed, PIP player's button pressed
      */
     @Override
+    public void onBackPressed() {
+        // Car build: Back first closes a list that is open over the video (left menu, channel, side list)
+        if (mPlaybackFragment != null && mPlaybackFragment.closeCarPanels()) {
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    /** Car build: the left-edge swipe opens the player's menu here, so it mustn't also act as Back. */
+    @Override
+    protected boolean isEdgeSlideEnabled() {
+        return false;
+    }
+
+    @Override
     public void finish() {
         Log.d(TAG, "Finishing activity...");
 
