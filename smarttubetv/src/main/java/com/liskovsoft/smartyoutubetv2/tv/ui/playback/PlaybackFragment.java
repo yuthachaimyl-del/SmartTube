@@ -328,13 +328,19 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
     private void ensureCenterControls() {
         if (mSidePanel == null && getView() instanceof android.view.ViewGroup && getActivity() != null) {
+            final com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.NextTabs nextTabs =
+                    new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.NextTabs(
+                            new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.NextTabs.Source() {
+                                @Override public java.util.List<Video> all() { return collectSuggestions(); }
+                                @Override public Video playing() { return mPlaybackPresenter.getVideo(); }
+                            });
             mSidePanel = new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel(
                     getActivity(), (android.view.ViewGroup) getView(),
                     new com.liskovsoft.smartyoutubetv2.tv.ui.playback.car.SidePanel.Host() {
-                        @Override public java.util.List<Video> getSuggestions() { return collectSuggestions(); }
+                        @Override public java.util.List<Video> getSuggestions() { return nextTabs.current(); }
                         @Override public void onVideoClicked(Video video) { mPlaybackPresenter.onSuggestionItemClicked(video); }
                         @Override public void setVideoArea(android.graphics.Rect area) { PlaybackFragment.this.setVideoArea(area); }
-                    });
+                    }, false, "วิดีโอถัดไป", nextTabs);
             mSidePanel.setSearch((query, panel) -> {
                 if (mSidePanelSearch != null) {
                     mSidePanelSearch.dispose();

@@ -576,9 +576,17 @@ public final class DualScreen {
         }
 
         private void buildPanels() {
+            final NextTabs nextTabs = new NextTabs(new NextTabs.Source() {
+                @Override public java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> all() {
+                    return mLibrary != null ? mLibrary.getSuggestions() : null;
+                }
+                @Override public com.liskovsoft.smartyoutubetv2.common.app.models.data.Video playing() {
+                    return com.liskovsoft.smartyoutubetv2.common.app.presenters.PlaybackPresenter.instance(mActivity).getVideo();
+                }
+            });
             SidePanel.Host nextHost = new SidePanel.Host() {
                 @Override public java.util.List<com.liskovsoft.smartyoutubetv2.common.app.models.data.Video> getSuggestions() {
-                    return mLibrary != null ? mLibrary.getSuggestions() : null;
+                    return nextTabs.current();
                 }
                 @Override public void onVideoClicked(com.liskovsoft.smartyoutubetv2.common.app.models.data.Video video) {
                     if (mLibrary != null) {
@@ -600,7 +608,7 @@ public final class DualScreen {
                     ScreenTwoUi.this.setVideoArea(area);
                 }
             };
-            mNext = new SidePanel(mActivity, mCtx, mRootView, nextHost, false, "วิดีโอถัดไป", null);
+            mNext = new SidePanel(mActivity, mCtx, mRootView, nextHost, false, "วิดีโอถัดไป", nextTabs);
             mNext.setSearch((query, panel) -> {
                 if (mNextSearch != null) {
                     mNextSearch.dispose();

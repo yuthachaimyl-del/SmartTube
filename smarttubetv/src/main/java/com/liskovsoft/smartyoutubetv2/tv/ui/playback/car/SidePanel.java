@@ -47,7 +47,13 @@ public final class SidePanel {
     public interface Tabs {
         String[] titles();
         void onTabSelected(int index, SidePanel panel);
+        /** The tab to show each time the list opens (-1: keep the current one). */
+        default int tabOnOpen() { return -1; }
+        /** Text when the shown tab has no videos (null: the default text). */
+        default String emptyText() { return null; }
     }
+
+    private Tabs mTabsCb;
 
     /** Part of the width the list takes on wide screens (the video keeps the rest). */
     private static final float PANEL_FRACTION = 0.38f;
@@ -98,6 +104,7 @@ public final class SidePanel {
     /** viewContext: where the panel is shown (the second screen has its own size and density). */
     public SidePanel(Activity activity, Context viewContext, ViewGroup root, Host host, boolean left, String titleText, Tabs tabs) {
         mActivity = activity;
+        mTabsCb = tabs;
         mCtx = viewContext;
         mHost = host;
         mLeft = left;
@@ -639,6 +646,10 @@ public final class SidePanel {
 
     public void open() {
         com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noteUiChange(); // the video moves: a few dropped frames are normal
+        int openTab = !mLeft && mTabsCb != null ? mTabsCb.tabOnOpen() : -1;
+        if (openTab >= 0) {
+            selectTab(openTab);
+        }
         List<Video> items = mHost.getSuggestions();
         if (!mLeft && (items == null || items.isEmpty()) && mSearch == null) {
             android.widget.Toast.makeText(mCtx, "ยังไม่มีรายการวิดีโอถัดไป", android.widget.Toast.LENGTH_SHORT).show();
@@ -646,7 +657,8 @@ public final class SidePanel {
         }
         if (!mLeft) {   // next videos: back to the suggestions each time it opens
             mShowingSearch = false;
-            setItems(items, "ยังไม่มีวิดีโอถัดไป  แตะ 🔍 เพื่อค้นหา");
+            String empty = mTabsCb != null ? mTabsCb.emptyText() : null;
+            setItems(items, empty != null ? empty : "ยังไม่มีวิดีโอถัดไป  แตะ 🔍 เพื่อค้นหา");
         }
         mOpen = true;
         if (mRoot.getWidth() > 0 && (mRoot.getWidth() != mRootW || mRoot.getHeight() != mRootH)) {
