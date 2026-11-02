@@ -67,8 +67,8 @@ public final class CarErrors {
 
     public static String noInternet(@Nullable Context context) {
         return isThai(context)
-                ? "ไม่มีสัญญาณอินเทอร์เน็ต — จะโหลดให้เองเมื่อสัญญาณกลับมา"
-                : "No internet — will load again when the signal is back";
+                ? "กำลังรออินเทอร์เน็ต… จะโหลดให้เองเมื่อต่อได้"
+                : "Waiting for the internet… will load by itself once connected";
     }
 
     public static boolean isNetwork(@Nullable Throwable error) {

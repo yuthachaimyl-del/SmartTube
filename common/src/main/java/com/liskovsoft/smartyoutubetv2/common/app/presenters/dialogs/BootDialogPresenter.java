@@ -30,7 +30,9 @@ public class BootDialogPresenter extends BasePresenter<Void> {
     //}
 
     public void start() {
-        startUpdatePresenter();
+        // Car build: no automatic check for the original SmartTube's updates (it doesn't update PiloTube, and with
+        // no signal yet right after starting the car it only pops up "Internet connection not available!").
+        // A manual check from the settings still works.
     }
 
     private void startUpdatePresenter() {

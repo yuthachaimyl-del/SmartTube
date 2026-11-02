@@ -1205,8 +1205,10 @@ public class BrowsePresenter extends BasePresenter<BrowseView> implements Sectio
                 return;
             }
 
-            Utils.postDelayed(mRefreshSection, 30_000);
-            CarErrors.whenOnline(getContext(), mRefreshSection);   // car build: reload when the signal is back
+            // car build: no signal yet (just started the car, phone hotspot still connecting): try again soon,
+            // and right away when the device gets a connection
+            Utils.postDelayed(mRefreshSection, CarErrors.isNetwork(error) && CarErrors.isOnline(getContext()) ? 5_000 : 30_000);
+            CarErrors.whenOnline(getContext(), mRefreshSection);
         }
     }
 

@@ -64,7 +64,8 @@ public class ErrorDialogFragment extends ErrorSupportFragment implements BrowseS
             setImageDrawable(ContextCompat.getDrawable(getActivity(), R.drawable.lb_ic_sad_cloud));
         }
 
-        setMessage(mDialogData.getMessage());
+        // car build: never show raw error text (exception names, file:line) on the screen
+        setMessage(com.liskovsoft.smartyoutubetv2.common.car.CarErrors.clean(getActivity(), mDialogData.getMessage()));
 
         TextView mTextView = (TextView) Helpers.getField(this, "mTextView");
         ImageView mImageView = (ImageView) Helpers.getField(this, "mImageView");
