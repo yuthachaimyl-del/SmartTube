@@ -377,7 +377,10 @@ public final class DualScreen {
         mHasSecond = second != null;
         mButtonRow.setVisibility(mHasSecond && mButtonsWanted ? View.VISIBLE : View.GONE);
         styleButton();
-        boolean want = sEnabled && mStarted && second != null && !mActivity.isFinishing();
+        // Back / Home while the video keeps playing behind: screen 2 stays on with it. It goes away when the
+        // player is released or paused while the player screen is away.
+        boolean playingBehind = !mStarted && mShowing && mPlayer != null && mPlayer.getPlayWhenReady();
+        boolean want = sEnabled && (mStarted || playingBehind) && second != null && !mActivity.isFinishing();
         if (want && !mShowing) {
             show(second);
         } else if (!want && mShowing) {
@@ -403,8 +406,8 @@ public final class DualScreen {
         sCurrent = this;
         android.util.DisplayMetrics m = new android.util.DisplayMetrics();
         display.getRealMetrics(m);
-        android.widget.Toast.makeText(mActivity, "จอ 2: " + display.getName() + "  " + m.widthPixels + "×"
-                + m.heightPixels + "  " + m.densityDpi + "dpi", android.widget.Toast.LENGTH_LONG).show();
+        android.util.Log.i("DualScreen", "screen 2: " + display.getName() + "  " + m.widthPixels + "x"
+                + m.heightPixels + "  " + m.densityDpi + "dpi");
         // Split screen: Android puts a new app screen into the other half of the MAIN screen
         // instead of on the second display. Use a window on the second display then.
         if (mActivity.isInMultiWindowMode()) {
@@ -463,6 +466,11 @@ public final class DualScreen {
         mScreenActivity = a;
         mUi = new ScreenTwoUi();
         return mUi;
+    }
+
+    /** Back on the second screen: closes what is open there first. True when it did. */
+    boolean handleBack(ScreenTwoActivity a) {
+        return a == mScreenActivity && mUi != null && mUi.back();
     }
 
     /** The app screen on the second display went away (Back there, or closed by the system). */
@@ -637,6 +645,19 @@ public final class DualScreen {
                     mMenu.setItems(videos, error != null ? error : "ไม่มีวิดีโอ");
                 }
             });
+        }
+
+        /** Back: the quality/options sheet first, then an open list. False when nothing was open. */
+        boolean back() {
+            if (mSheet != null && mSheet.isOpen()) {
+                mSheet.goBack();
+                return true;
+            }
+            if (mPanels.anyOpen()) {
+                mPanels.closeAll();
+                return true;
+            }
+            return false;
         }
 
         private final ScreenTwoControls.Panels mPanels = new ScreenTwoControls.Panels() {

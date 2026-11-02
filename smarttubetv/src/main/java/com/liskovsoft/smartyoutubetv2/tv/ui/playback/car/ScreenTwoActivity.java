@@ -40,6 +40,9 @@ public final class ScreenTwoActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (mOwner != null && mOwner.handleBack(this)) {
+            return;   // a sheet or list was open there: just close it
+        }
         finish();   // Back on the second screen: video back to the main screen only
     }
 
