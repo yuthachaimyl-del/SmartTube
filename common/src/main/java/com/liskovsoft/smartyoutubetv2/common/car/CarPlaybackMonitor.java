@@ -318,8 +318,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private void saveEstimate() {
         mSinceSaveMs = 0;
         RestoreTrackSelector selector = mSelector.get();
+        SimpleExoPlayer player = mPlayer.get();
         if (selector != null && mPlayedMs >= WARM_AFTER_MS) {
-            CarAutoQuality.onMeterWarm(selector.getBitrateEstimate());
+            long estimate = selector.getBitrateEstimate();
+            CarAutoQuality.onMeterWarm(estimate);
+            CarPerf.log(String.format(Locale.US, "network measured ~%.2f Mbps (%d s loaded ahead)", estimate / 1_000_000f,
+                    player != null ? player.getTotalBufferedDuration() / 1000 : -1));
         }
     }
 
