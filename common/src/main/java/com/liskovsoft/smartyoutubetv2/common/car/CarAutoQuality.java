@@ -252,6 +252,13 @@ public final class CarAutoQuality {
                 best = c;
             }
         }
+        if (best == null) { // every lighter level dropped frames before too: the lightest one that is lighter than this
+            for (Format c : sCandidates) {
+                if (c.bitrate > 0 && load(c) < load && (best == null || load(c) < load(best))) {
+                    best = c;
+                }
+            }
+        }
         if (best != null && switchTo(best)) {
             CarPerf.log("lighter picture from the next piece on: " + describe(best));
             return true;
@@ -321,8 +328,8 @@ public final class CarAutoQuality {
         }
         long budget = (long) (meterEstimate * 0.6f); // more margin than a fresh pick: a step back down costs a stop
         Format best = null;
-        for (Format f : sCandidates) {
-            if (f.bitrate > 0 && f.bitrate <= budget && !isTooHeavy(f) && (best == null || better(f, best))) {
+        for (Format f : sCandidates) { // (already past the decoder filters, leniently - like the pick)
+            if (f.bitrate > 0 && f.bitrate <= budget && (best == null || better(f, best))) {
                 best = f;
             }
         }
