@@ -32,6 +32,8 @@ import java.util.Locale;
 public final class CarAutoQuality {
     private static final String PREFS = "car_auto_quality";
     private static final String KEY_ESTIMATE = "bandwidth";
+    private static final String KEY_ESTIMATE_TIME = "bandwidth_time";
+    private static final long ESTIMATE_FRESH_MS = 15 * 60_000; // an older measurement says little about where the car is now
     private static final String KEY_BAD = "too_heavy_";
     private static final String KEY_BAD_TIME = "too_heavy_time_";
     private static final long REMEMBER_MS = 7L * 24 * 60 * 60_000; // try the heavier level again after a week
@@ -254,12 +256,14 @@ public final class CarAutoQuality {
 
     private static long savedEstimate() {
         long saved = sPrefs != null ? sPrefs.getLong(KEY_ESTIMATE, 0) : 0;
-        return saved > 0 ? saved : FIRST_ESTIMATE;
+        long time = sPrefs != null ? sPrefs.getLong(KEY_ESTIMATE_TIME, 0) : 0;
+        boolean fresh = System.currentTimeMillis() - time < ESTIMATE_FRESH_MS;
+        return saved > 0 && fresh ? saved : FIRST_ESTIMATE;
     }
 
     private static void saveEstimate(long estimate) {
         if (sPrefs != null && estimate > 0) {
-            sPrefs.edit().putLong(KEY_ESTIMATE, estimate).apply();
+            sPrefs.edit().putLong(KEY_ESTIMATE, estimate).putLong(KEY_ESTIMATE_TIME, System.currentTimeMillis()).apply();
         }
     }
 
