@@ -84,7 +84,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
     /** After a network error: the signal is back (or was never gone) - reload; nothing reachable - say so, look again. */
     private void onSignalProbe(boolean alive) {
-        if (getPlayer() == null || mVideoLoaderController == null || isStreamEnded()) {
+        if (getPlayer() == null || mVideoLoaderController == null || isStreamEnded() || getPlayer().isPlaying()) {
             return;
         }
         if (alive) {
@@ -104,6 +104,12 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     @Override
     public void onLongBuffering() {
         if (getPlayer() == null) {
+            return;
+        }
+
+        // Car build: playing again meanwhile (the detector was re-armed by one of the waits below): nothing to fix
+        if (getPlayer().isPlaying()) {
+            mBufferingDetector.onStopBuffering();
             return;
         }
 
@@ -144,7 +150,7 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     }
 
     private void onProbe(boolean alive) {
-        if (getPlayer() == null || isStreamEnded() || mVideoLoaderController == null) {
+        if (getPlayer() == null || isStreamEnded() || mVideoLoaderController == null || getPlayer().isPlaying()) {
             return;
         }
         if (!alive) {
