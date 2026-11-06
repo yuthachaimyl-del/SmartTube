@@ -1,0 +1,25 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+index 29e7de1e..af643ee6 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/videoinfo/V2/VideoInfoService.java
+@@ -245,7 +245,9 @@ public class VideoInfoService extends VideoInfoServiceBase {
+ 
+         boolean oldUseAuth = mUseAuth;
+ 
+-        if (shouldObtainExtendedFormats(result) || result.isStoryboardBroken()) {
++        // Car build: no extra request just for seek-preview pictures - on a weak signal it delayed the start by
++        // many seconds (only when the high bit rate formats option is on)
++        if (shouldObtainExtendedFormats(result)) {
+             Log.d(TAG, "Enable high bitrate formats...");
+             mUseAuth = false;
+             VideoInfoHls videoInfoHls = getVideoInfoIOSHls(videoId, clickTrackingParams);
+@@ -258,7 +260,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
+         }
+ 
+         // TV and others has a limited number of auto generated subtitles
+-        if (needMoreSubtitles(result)) {
++        // Car build: skipped - one more full request before playback, for a list of translations nobody uses here
++        if (false && needMoreSubtitles(result)) {
+             Log.d(TAG, "Enable full list of auto generated subtitles...");
+ 
+             if (mCachedTranslationLanguages == null || mCachedTranslationLanguages.size() < 100) {

@@ -2,6 +2,28 @@ include ':smarttubetv', ':common', ':chatkit', ':leanbackassistant', ':leanback-
 
 def rootDir = settingsDir
 
+// Car build: small changes to the upstream submodules (they can't be pushed there), kept as patches in car-patches/
+// and applied here before the build: <Submodule>-NNNN-name.patch. Already applied patches are skipped.
+def carRun = { File dir, List<String> cmd ->
+    def proc = new ProcessBuilder(cmd).directory(dir).redirectErrorStream(true).start()
+    def out = proc.inputStream.text
+    [proc.waitFor(), out]
+}
+new File(rootDir, 'car-patches').listFiles()?.findAll { it.name.endsWith('.patch') }?.sort { it.name }?.each { patch ->
+    def module = new File(rootDir, patch.name.substring(0, patch.name.indexOf('-')))
+    if (!module.isDirectory()) {
+        return
+    }
+    if (carRun(module, ['git', 'apply', '--reverse', '--check', patch.absolutePath])[0] == 0) {
+        return // applied already
+    }
+    def (code, out) = carRun(module, ['git', 'apply', '--whitespace=nowarn', patch.absolutePath])
+    if (code != 0) {
+        throw new GradleException("Car patch ${patch.name} doesn't apply to ${module.name}: ${out}")
+    }
+    println "Car patch applied: ${patch.name}"
+}
+
 // git submodule
 gradle.ext.sharedModulesRoot = new File(rootDir, '../SharedModules').exists() ? new File(rootDir, '../SharedModules') : new File(rootDir, './SharedModules')
 apply from: new File(gradle.ext.sharedModulesRoot, 'core_settings.gradle')
