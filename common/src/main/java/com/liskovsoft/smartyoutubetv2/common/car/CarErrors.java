@@ -109,6 +109,40 @@ public final class CarErrors {
 
     // ---------------------------------------------------------------- connectivity
 
+    /** Result of {@link #probe}. */
+    public interface Probe {
+        void done(boolean alive);
+    }
+
+    /**
+     * Is anything actually reachable? The system says "online" in a tunnel or a dead zone too (the mobile network is
+     * still attached); a tiny request with a short timeout tells. Answers on the main thread within ~5 s.
+     */
+    public static void probe(Probe callback) {
+        Thread t = new Thread(() -> {
+            boolean alive = false;
+            java.net.HttpURLConnection c = null;
+            try {
+                c = (java.net.HttpURLConnection) new java.net.URL("https://connectivitycheck.gstatic.com/generate_204").openConnection();
+                c.setConnectTimeout(4_000);
+                c.setReadTimeout(4_000);
+                c.setInstanceFollowRedirects(false);
+                c.setRequestProperty("Connection", "close");
+                alive = c.getResponseCode() > 0;
+            } catch (Throwable e) {
+                Log.w(TAG, "probe: nothing reachable: " + e);
+            } finally {
+                if (c != null) {
+                    c.disconnect();
+                }
+            }
+            boolean result = alive;
+            sMain.post(() -> callback.done(result));
+        }, "car-net-probe");
+        t.setDaemon(true);
+        t.start();
+    }
+
     public static boolean isOnline(Context context) {
         try {
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);

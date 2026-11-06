@@ -44,6 +44,7 @@ import com.google.android.exoplayer2.source.dash.manifest.AdaptationSet;
 import com.google.android.exoplayer2.source.dash.manifest.DashManifest;
 import com.google.android.exoplayer2.source.dash.manifest.RangedUri;
 import com.google.android.exoplayer2.source.dash.manifest.Representation;
+import com.google.android.exoplayer2.trackselection.PinnedTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
@@ -239,7 +240,7 @@ public class DefaultDashChunkSource implements DashChunkSource {
 
   @Override
   public int getPreferredQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
-    if (fatalError != null || trackSelection.length() < 2) {
+    if (fatalError != null || trackSelection.length() < 2 || trackSelection instanceof PinnedTrackSelection) {
       return queue.size();
     }
     return trackSelection.evaluateQueueSize(playbackPositionUs, queue);
@@ -441,6 +442,7 @@ public class DefaultDashChunkSource implements DashChunkSource {
       }
     }
     return blacklistDurationMs != C.TIME_UNSET
+        && !(trackSelection instanceof PinnedTrackSelection) // Car build: the app picks the track (see the interface)
         && trackSelection.blacklist(trackSelection.indexOf(chunk.trackFormat), blacklistDurationMs);
   }
 

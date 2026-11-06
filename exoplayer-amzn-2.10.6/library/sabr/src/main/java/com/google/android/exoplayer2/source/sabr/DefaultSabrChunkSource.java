@@ -37,6 +37,7 @@ import com.google.android.exoplayer2.source.sabr.parser.models.CaptionSelector;
 import com.google.android.exoplayer2.source.sabr.parser.models.FormatSelector;
 import com.google.android.exoplayer2.source.sabr.parser.models.VideoSelector;
 import com.google.android.exoplayer2.source.sabr.protos.misc.FormatId;
+import com.google.android.exoplayer2.trackselection.PinnedTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
@@ -132,6 +133,12 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     private long pendingSeekTimeUs = C.TIME_UNSET;
     /** Car build: the media chunk that also carries the init segment (see canLoadInitWithMedia) */
     @Nullable private Chunk initWithMediaChunk;
+    /** Car build: the format the SABR requests ask for (see {@link #maybeSwitchFormat}) */
+    @Nullable private Format currentFormat;
+    private int activeIndex; // its index in the selection
+    /** Car build: the next media request starts the new format where the loaded data ends */
+    private boolean switchPending;
+    private long switchSeekTimeUs = C.TIME_UNSET;
     private static volatile boolean sInitWithMediaBroken;
 
     /**
@@ -171,6 +178,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         this.adaptationSetIndices = adaptationSetIndices;
         this.trackSelection = trackSelection;
         this.formatSelector = createFormatSelector(trackType, trackSelection);
+        this.currentFormat = trackSelection.getSelectedFormat();
+        this.activeIndex = trackSelection.getSelectedIndex();
         this.trackType = trackType;
         this.dataSource = dataSource;
         this.periodIndex = periodIndex;
@@ -228,7 +237,46 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     @Override
     public void updateTrackSelection(TrackSelection trackSelection) {
         this.trackSelection = trackSelection;
-        this.formatSelector = createFormatSelector(trackType, trackSelection);
+        // Car build: a different selected format is picked up by the next getNextChunk (maybeSwitchFormat), so the
+        // stream carries on where it is instead of asking the server for the start of the video again
+    }
+
+    /**
+     * Car build: the selected format changed in the middle of the stream (auto picture going back up after a weak
+     * patch, or down when the decoder drops frames). Ask the server for the new format from here on: the next request
+     * carries its init segment and starts where the loaded data ends, so playback never stops - no re-buffer. The
+     * earlier attempt at this (ExoPlayer's own switching) re-downloaded the start of the video, because a format's
+     * first request always began at 0.
+     */
+    private void maybeSwitchFormat(@Nullable MediaChunk previous, long loadPositionUs) {
+        Format selected = trackSelection.getSelectedFormat();
+        if (selected == null || selected == currentFormat || (currentFormat != null && selected.equals(currentFormat))) {
+            return;
+        }
+        if (manifest.dynamic) { // live: untested here, keep the format the stream started with
+            return;
+        }
+        Log.e(TAG, "Switching format: track=" + trackType + ", from " + describe(currentFormat) + " to " + describe(selected)
+                + " at " + (previous != null ? C.usToMs(loadPositionUs) + "ms" : "the start"));
+        currentFormat = selected;
+        activeIndex = trackSelection.getSelectedIndex();
+        formatSelector = createFormatSelector(trackType, trackSelection);
+        if (sabrStream != null) {
+            sabrStream.setFormatSelector(formatSelector);
+        }
+        if (previous != null) {
+            switchPending = true;
+            switchSeekTimeUs = loadPositionUs;
+        }
+    }
+
+    /** The format being loaded: the selection's, unless a switch was refused (live). */
+    private Format chunkFormat() {
+        return trackSelection.getFormat(activeIndex);
+    }
+
+    private static String describe(@Nullable Format f) {
+        return f == null ? "none" : f.id + " " + f.width + "x" + f.height + " " + f.bitrate + "bps";
     }
 
     @Override
@@ -273,7 +321,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
     @Override
     public int getPreferredQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
-        if (fatalError != null || trackSelection.length() < 2) {
+        if (fatalError != null || trackSelection.length() < 2 || trackSelection instanceof PinnedTrackSelection) {
             return queue.size();
         }
         return trackSelection.evaluateQueueSize(playbackPositionUs, queue);
@@ -329,9 +377,10 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
         trackSelection.updateSelectedTrack(
                 playbackPositionUs, bufferedDurationUs, timeToLiveEdgeUs, queue, chunkIterators);
+        maybeSwitchFormat(previous, loadPositionUs);
 
         RepresentationHolder representationHolder =
-                representationHolders[trackSelection.getSelectedIndex()];
+                representationHolders[activeIndex];
 
         // External captions contain the entire subtitle track in one sample.
         if (representationHolder.extractorWrapper == null && previous != null) {
@@ -361,7 +410,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 } else {
                     // We have initialization and/or index requests to make.
                     out.chunk = newInitializationChunk(representationHolder, dataSource,
-                            trackSelection.getSelectedFormat(), trackSelection.getSelectionReason(),
+                            chunkFormat(), trackSelection.getSelectionReason(),
                             trackSelection.getSelectionData(), pendingInitializationUri, pendingIndexUri);
                     return;
                 }
@@ -434,7 +483,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         //    }
         //}
 
-        long seekTimeUs = queue.isEmpty() ? loadPositionUs : C.TIME_UNSET;
+        long seekTimeUs = queue.isEmpty() || switchPending ? loadPositionUs : C.TIME_UNSET;
+        switchPending = false;
         if (sabrStream != null) {
             if (seekTimeUs != C.TIME_UNSET) {
                 pendingSeekTimeUs = seekTimeUs;
@@ -456,7 +506,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                         representationHolder,
                         dataSource,
                         trackType,
-                        trackSelection.getSelectedFormat(),
+                        chunkFormat(),
                         trackSelection.getSelectionReason(),
                         trackSelection.getSelectionData(),
                         C.INDEX_UNSET, // TODO: does sabr has segment num?
@@ -474,7 +524,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
      * loaded) of a regular video. Quality switches and live streams keep the separate init request.
      */
     private boolean canLoadInitWithMedia(List<? extends MediaChunk> queue) {
-        return !sInitWithMediaBroken && queue.isEmpty() && sabrStream != null && !manifest.dynamic;
+        return !sInitWithMediaBroken && (queue.isEmpty() || switchPending) && sabrStream != null && !manifest.dynamic;
     }
 
     /** Car build: if the combined first request ever goes wrong, go back to separate init requests for good. */
@@ -575,6 +625,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         //    }
         //}
         return blacklistDurationMs != C.TIME_UNSET
+                && !(trackSelection instanceof PinnedTrackSelection) // Car build: the app picks the track (see the interface)
                 && trackSelection.blacklist(trackSelection.indexOf(chunk.trackFormat), blacklistDurationMs);
     }
 
@@ -670,7 +721,9 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 Uri.parse(manifest.getRequestUrl(trackType)),
                 DataSpec.HTTP_METHOD_POST,
                 //sabrStream.createVideoPlaybackAbrRequest(trackType, true).toByteArray(),
-                manifest.createVideoPlaybackAbrRequest(trackType, true).toByteArray(),
+                // Car build: a format switch in the middle of the stream asks for the init segment from where the loaded
+                // data ends (the media that comes with it is thrown away here and asked for again by the media chunk)
+                manifest.createVideoPlaybackAbrRequest(trackType, true, switchPending ? switchSeekTimeUs : C.TIME_UNSET).toByteArray(),
                 0, 0, C.LENGTH_UNSET,
                 //requestUri.start,
                 //requestUri.start,

@@ -424,6 +424,14 @@ public class SabrManifest implements FilterableManifest<SabrManifest> {
             }
         }
 
+        // Car build: formats this track switched away from in the middle of the stream count as fully buffered, so the
+        // server sends only the one playing now
+        for (FormatId retired : activeStream.getRetiredFormatIds()) {
+            if (retired.getItag() != currentFormatKey) {
+                bufferedRanges.add(createFullBufferRange(retired));
+            }
+        }
+
         return new Pair<>(bufferedRanges, formatToDiscard);
     }
 

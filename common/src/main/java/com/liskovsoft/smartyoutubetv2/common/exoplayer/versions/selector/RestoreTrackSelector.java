@@ -29,7 +29,8 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
     }
 
     public RestoreTrackSelector(Factory trackSelectionFactory) {
-        super(trackSelectionFactory);
+        // Car build: auto picture's selection can change version in mid-stream (see CarTrackSelection)
+        super(new com.liskovsoft.smartyoutubetv2.common.car.CarTrackSelection.Factory(trackSelectionFactory));
         AdaptiveQuality.attach(this);
         // Could help with Shield resolution bug?
         //setParameters(buildUponParameters().setForceHighestSupportedBitrate(true));
@@ -159,7 +160,8 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
             }
             if (auto != null) {
                 if (mCallback != null) {
-                    mCallback.updateVideoTrackSelection(groups, params, auto);
+                    mCallback.updateVideoTrackSelection(groups, params,
+                            com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.single(auto));
                 }
                 return auto;
             }

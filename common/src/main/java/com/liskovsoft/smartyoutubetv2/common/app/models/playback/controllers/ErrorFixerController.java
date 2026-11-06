@@ -30,6 +30,16 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     private VideoLoaderController mVideoLoaderController;
     private String mSabrErrorFixVideoId;
     private int mSabrErrorFixAttempts;
+    /** Car build: reloads done because nothing arrived although the network answered (see onLongBuffering) */
+    private int mDeadAirReloads;
+    private final android.os.Handler mHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable mProbeAgain = () -> CarErrors.probe(this::onSignalProbe);
+    private static final long PROBE_AGAIN_MS = 15_000;
+    private static final int MAX_SIGNAL_RELOADS = 2; // then it isn't the signal: the original fixes
+    private int mSignalReloads;
+    private int mLastErrorType;
+    private int mLastErrorRenderer;
+    private Throwable mLastError;
 
     @Override
     public void onInit() {
@@ -56,7 +66,39 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             return;
         }
 
+        // Car build: a timeout or connection failure while the system still says online - a tunnel or dead zone (the
+        // mobile network stays attached). Not a broken client: check what's reachable before switching anything, and
+        // simply reload the video when the signal is back.
+        if (error != null && CarErrors.isNetwork(error) && !isStreamEnded() && mSignalReloads < MAX_SIGNAL_RELOADS) {
+            Log.w(TAG, "Network error while online: checking the network");
+            mLastErrorType = type;
+            mLastErrorRenderer = rendererIndex;
+            mLastError = error;
+            mHandler.removeCallbacks(mProbeAgain);
+            CarErrors.probe(this::onSignalProbe);
+            return;
+        }
+
         runEngineErrorAction(type, rendererIndex, error);
+    }
+
+    /** After a network error: the signal is back (or was never gone) - reload; nothing reachable - say so, look again. */
+    private void onSignalProbe(boolean alive) {
+        if (getPlayer() == null || mVideoLoaderController == null || isStreamEnded()) {
+            return;
+        }
+        if (alive) {
+            if (++mSignalReloads > MAX_SIGNAL_RELOADS && mLastError != null) { // not the signal after all
+                runEngineErrorAction(mLastErrorType, mLastErrorRenderer, mLastError);
+                return;
+            }
+            com.liskovsoft.smartyoutubetv2.common.car.CarPerf.log("network error, but the network answers: reloading the video");
+            mVideoLoaderController.reloadVideo();
+            return;
+        }
+        com.liskovsoft.smartyoutubetv2.common.car.CarPerf.log("network error and nothing reachable: waiting for the signal");
+        MessageHelpers.showMessage(getContext(), CarErrors.noInternet(getContext()));
+        mHandler.postDelayed(mProbeAgain, PROBE_AGAIN_MS);
     }
 
     @Override
@@ -88,6 +130,41 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
             return;
         }
 
+        // Car build: nothing arrives at all, yet the system says online - a tunnel or dead zone looks exactly like this
+        // (the mobile network stays attached). Check before doing anything drastic: when nothing is reachable, say so
+        // and look again in 20 s (no client switch, no app restart - they'd start over on the same dead link); when the
+        // network answers, reload the video once, and only if that doesn't help either, use the original fixes.
+        if (com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.noDataArriving()) {
+            Log.w(TAG, "Long buffering with nothing arriving: checking the network");
+            CarErrors.probe(this::onProbe);
+            return;
+        }
+
+        runLongBufferingFix();
+    }
+
+    private void onProbe(boolean alive) {
+        if (getPlayer() == null || isStreamEnded() || mVideoLoaderController == null) {
+            return;
+        }
+        if (!alive) {
+            Log.w(TAG, "Nothing reachable (tunnel, dead zone): waiting");
+            com.liskovsoft.smartyoutubetv2.common.car.CarPerf.log("no signal: nothing reachable, waiting (looking again in 20 s)");
+            MessageHelpers.showMessage(getContext(), CarErrors.noInternet(getContext()));
+            mBufferingDetector.onStartBuffering(); // look again in 20 s
+            return;
+        }
+        if (mDeadAirReloads++ == 0) {
+            Log.w(TAG, "The network answers but the stream doesn't: reloading the video");
+            com.liskovsoft.smartyoutubetv2.common.car.CarPerf.log("signal is back (or the stream hung): reloading the video");
+            mVideoLoaderController.reloadVideo();
+            return;
+        }
+        runLongBufferingFix();
+    }
+
+    /** The original fixes for long buffering. */
+    private void runLongBufferingFix() {
         if (isOfflineVideo() && isSubtitlesEnabled()) {
             // Long loading subtitles cause hangs
             disableSubtitles();
@@ -144,6 +221,8 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     public void onPlay() {
         mBufferingDetector.onStopBuffering();
         mSabrErrorFixAttempts = 0;
+        mDeadAirReloads = 0;
+        mSignalReloads = 0;
     }
 
     @Override
@@ -154,16 +233,21 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
     @Override
     public void onNewVideo(Video item) {
         mBufferingDetector.start();
+        mDeadAirReloads = 0;
+        mSignalReloads = 0;
+        mHandler.removeCallbacks(mProbeAgain);
     }
 
     @Override
     public void onFinish() {
         mBufferingDetector.reset();
+        mHandler.removeCallbacks(mProbeAgain);
     }
 
     @Override
     public void onEngineReleased() {
         mBufferingDetector.reset();
+        mHandler.removeCallbacks(mProbeAgain);
     }
 
     private void runEngineErrorAction(int type, int rendererIndex, Throwable error) {

@@ -170,6 +170,11 @@ public class SabrStream {
         return processor.getFormatSelector();
     }
 
+    /** Car build: formats this track switched away from in the middle of the stream. */
+    public java.util.List<com.google.android.exoplayer2.source.sabr.protos.misc.FormatId> getRetiredFormatIds() {
+        return processor.getRetiredFormatIds();
+    }
+
     public void setFormatSelector(FormatSelector formatSelector) {
         processor.setFormatSelector(formatSelector);
     }

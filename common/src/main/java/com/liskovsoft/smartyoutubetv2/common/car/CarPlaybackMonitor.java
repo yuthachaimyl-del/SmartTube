@@ -26,7 +26,8 @@ import java.util.Locale;
  * heavy, so next videos start lighter.</li>
  * <li>Repeated or long stalls, or no picture at all after a few seconds - the network can't carry this bit rate.
  * Lower, again if needed, while data is still arriving (a tunnel isn't fixed by going lower).</li>
- * <li>Clear headroom for a while after that - back up, so a long video doesn't stay small after one weak patch.</li>
+ * <li>Clear headroom for a while after that - back up, so a long video doesn't stay small after one weak patch. The
+ * better version takes over at the next piece of video; playback doesn't stop.</li>
  * </ul>
  * The first seconds after a start, a seek, a quality change or a change of the video's size on screen don't count.
  */
@@ -41,10 +42,10 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long SLOW_START_MS = 8_000;    // no picture after this long: the version is too heavy for here
     private static final long STEP_AGAIN_MS = 15_000;   // a weak area: step down again if it still stalls
     private static final long DATA_RECENT_MS = 15_000;  // data arrived this recently: a weak signal, not a dead one
-    private static final long UP_FIRST_WAIT_MS = 60_000;    // steady for this long after a step before going back up
-    private static final long UP_MAX_WAIT_MS = 10 * 60_000; // (doubles after each step up: a hiccup each time)
-    private static final long UP_QUIET_MS = 90_000;         // and no stall for this long
-    private static final long UP_MIN_BUFFER_MS = 12_000;    // and this much already loaded ahead
+    private static final long UP_FIRST_WAIT_MS = 30_000;    // steady for this long after a step before going back up
+    private static final long UP_MAX_WAIT_MS = 4 * 60_000;  // (doubles after each step up: a step back down would cost a stop)
+    private static final long UP_QUIET_MS = 60_000;         // and no stall for this long
+    private static final long UP_MIN_BUFFER_MS = 10_000;    // and this much already loaded ahead
     private static CarPlaybackMonitor sCurrent;
     private final WeakReference<SimpleExoPlayer> mPlayer;
     private final WeakReference<RestoreTrackSelector> mSelector;
@@ -206,8 +207,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         if (mStrikes >= 2) {
             mStrikes = 0;
             Format format = player.getVideoFormat();
-            CarAutoQuality.onFramesDropping(format);
-            stepDown(now);
+            if (CarAutoQuality.onFramesDropping(format)) {
+                mLastStepMs = now; // the lighter version takes over at the next piece of video
+                grace();
+            } else {
+                stepDown(now);
+            }
         }
     }
 
@@ -268,6 +273,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         return monitor != null && AdaptiveQuality.isEnabled() && monitor.dataArriving(SystemClock.elapsedRealtime());
     }
 
+    /** Nothing has arrived for a while (a tunnel, a dead zone, or a server that stopped answering). */
+    public static boolean noDataArriving() {
+        CarPlaybackMonitor monitor = sCurrent;
+        return monitor != null && !monitor.dataArriving(SystemClock.elapsedRealtime());
+    }
+
     private void onStalls(SimpleExoPlayer player, long now) {
         if (!AdaptiveQuality.isEnabled()) {
             return;
@@ -286,8 +297,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     }
 
     /**
-     * Playing smoothly with plenty loaded ahead, and the measured speed would carry a clearly better picture: lift the
-     * per-video limit (a change costs a short re-buffer, so wait longer between each one).
+     * Playing smoothly with plenty loaded ahead, and the measured speed would carry a clearly better picture: it takes
+     * over at the next piece of video (a step back down would cost a stop, so wait longer between each step up).
      */
     private void checkHeadroom(SimpleExoPlayer player, long now, boolean playingNormally) {
         if (!playingNormally || !AdaptiveQuality.isEnabled() || mPlayedMs < WARM_AFTER_MS || now < mGraceUntilMs
@@ -297,19 +308,28 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             return;
         }
         RestoreTrackSelector selector = mSelector.get();
-        if (selector != null && CarAutoQuality.liftCapForHeadroom(selector.getBitrateEstimate())) {
+        if (selector == null) {
+            return;
+        }
+        int up = CarAutoQuality.liftCapForHeadroom(selector.getBitrateEstimate());
+        if (up != CarAutoQuality.UP_NONE) {
             mUpWaitMs = Math.min(mUpWaitMs * 2, UP_MAX_WAIT_MS);
             mLastStepMs = now;
-            selector.reselect();
+            if (up == CarAutoQuality.UP_RESELECT) {
+                CarAutoQuality.forcePick();
+                selector.reselect();
+            }
             grace();
         }
     }
 
+    /** Stalled or not starting: rebuild the stream with the lighter version now (don't wait for the slow download). */
     private void stepDown(long now) {
         mLastStepMs = now;
         mSaidNoData = false;
         RestoreTrackSelector selector = mSelector.get();
         if (selector != null) {
+            CarAutoQuality.forcePick();
             selector.reselect();
         }
         grace();

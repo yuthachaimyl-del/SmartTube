@@ -11,9 +11,9 @@ public class SelectedFormat {
     public final long endTimeMs;
     public final String mimeType;
     public final String videoId;
-    public final FormatSelector formatSelector;
+    public FormatSelector formatSelector; // Car build: not final - a format can be retired and revived (quality switch)
     public long totalSegments;
-    public final boolean discard;
+    public boolean discard;
     public long sequenceLmt = -1;
     public Segment currentSegment;
     public Segment initSegment;

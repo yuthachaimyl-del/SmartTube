@@ -25,6 +25,7 @@ import com.google.android.exoplayer2.source.sabr.parser.results.ProcessMediaHead
 import com.google.android.exoplayer2.source.sabr.parser.results.ProcessMediaResult;
 import com.google.android.exoplayer2.source.sabr.parser.results.ProcessSabrSeekResult;
 import com.google.android.exoplayer2.source.sabr.parser.results.ProcessStreamProtectionStatusResult;
+import com.google.android.exoplayer2.source.sabr.protos.misc.FormatId;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.FormatInitializationMetadata;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.LiveMetadata;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.MediaHeader;
@@ -75,6 +76,8 @@ public class SabrProcessor {
     private final Set<Integer> sabrContextsToSend;
     private final Map<Integer, MediaHeader> initializedFormats;
     private final FormatSelector emptySelector;
+    /** Car build: formats this track played earlier in the stream and switched away from (see setFormatSelector) */
+    private final List<FormatId> retiredFormatIds = new ArrayList<>();
 
     public SabrProcessor(
             @NonNull String videoPlaybackUstreamerConfig,
@@ -812,8 +815,38 @@ public class SabrProcessor {
     }
 
     public void setFormatSelector(FormatSelector formatSelector) {
+        FormatSelector old = this.formatSelector;
         this.formatSelector = formatSelector;
         initializeFormatSelector();
+        if (old == null || old == this.formatSelector || old == emptySelector) {
+            return;
+        }
+        // Car build: a quality change in the middle of the stream. The format played so far is retired: its media is
+        // thrown away if the server still sends some, and the requests tell the server it's fully buffered. A format
+        // that was retired earlier and is picked again comes back to life (its init data is already known).
+        for (SelectedFormat selectedFormat : selectedFormats.values()) {
+            if (selectedFormat.formatSelector == old && !selectedFormat.discard) {
+                selectedFormat.discard = true;
+                if (selectedFormat.formatId != null && !retiredFormatIds.contains(selectedFormat.formatId)) {
+                    retiredFormatIds.add(selectedFormat.formatId);
+                }
+                Log.d(TAG, "Retired format %s", selectedFormat.formatId);
+            }
+        }
+        for (SelectedFormat selectedFormat : selectedFormats.values()) {
+            if (selectedFormat.formatId != null && this.formatSelector.match(selectedFormat.formatId, selectedFormat.mimeType)) {
+                selectedFormat.discard = false;
+                selectedFormat.formatSelector = this.formatSelector;
+                selectedFormat.currentSegment = null;
+                retiredFormatIds.remove(selectedFormat.formatId);
+                Log.d(TAG, "Revived format %s", selectedFormat.formatId);
+            }
+        }
+    }
+
+    /** Car build: formats switched away from in this stream (the server is told they're fully buffered). */
+    public @NonNull List<FormatId> getRetiredFormatIds() {
+        return retiredFormatIds;
     }
 
     public @NonNull Map<Integer, MediaHeader> getInitializedFormats() {
