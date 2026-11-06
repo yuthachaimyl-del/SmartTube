@@ -20,11 +20,13 @@ import java.lang.ref.WeakReference;
 import java.util.Locale;
 
 /**
- * Car build: watches a playing video for the two kinds of stutter and lets auto picture step down once:
+ * Car build: watches a playing video for the kinds of stutter and lets auto picture step down (and, later, back up):
  * <ul>
  * <li>Dropped frames - the decoder can't keep up with this resolution/frame rate. The level is remembered as too
  * heavy, so next videos start lighter.</li>
- * <li>Repeated stalls - the network can't carry this bit rate. Lower for the rest of the video.</li>
+ * <li>Repeated or long stalls, or no picture at all after a few seconds - the network can't carry this bit rate.
+ * Lower, again if needed, while data is still arriving (a tunnel isn't fixed by going lower).</li>
+ * <li>Clear headroom for a while after that - back up, so a long video doesn't stay small after one weak patch.</li>
  * </ul>
  * The first seconds after a start, a seek, a quality change or a change of the video's size on screen don't count.
  */
@@ -38,6 +40,11 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long STALLS_WITHIN_MS = 90_000;
     private static final long SLOW_START_MS = 8_000;    // no picture after this long: the version is too heavy for here
     private static final long STEP_AGAIN_MS = 15_000;   // a weak area: step down again if it still stalls
+    private static final long DATA_RECENT_MS = 15_000;  // data arrived this recently: a weak signal, not a dead one
+    private static final long UP_FIRST_WAIT_MS = 60_000;    // steady for this long after a step before going back up
+    private static final long UP_MAX_WAIT_MS = 10 * 60_000; // (doubles after each step up: a hiccup each time)
+    private static final long UP_QUIET_MS = 90_000;         // and no stall for this long
+    private static final long UP_MIN_BUFFER_MS = 12_000;    // and this much already loaded ahead
     private static CarPlaybackMonitor sCurrent;
     private final WeakReference<SimpleExoPlayer> mPlayer;
     private final WeakReference<RestoreTrackSelector> mSelector;
@@ -57,6 +64,11 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private long mSinceSaveMs;
     private long mSteppedForStallsMs = -1;
     private long mStartWaitMs;
+    private long mLastBufferedPosMs = -1;
+    private long mLastProgressMs;   // elapsedRealtime when loaded data last grew
+    private long mLastStepMs;       // last change of level (down or up)
+    private long mUpWaitMs = UP_FIRST_WAIT_MS;
+    private boolean mSaidNoData;
     @Nullable private TrackGroupArray mGroups;
 
     private CarPlaybackMonitor(SimpleExoPlayer player, RestoreTrackSelector selector) {
@@ -145,8 +157,22 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             }
         }
 
+        // Is data arriving? Loaded data grows while a chunk downloads (slowly on a weak signal, not at all in a tunnel)
+        long bufferedPos = player.getBufferedPosition();
+        if (mLastBufferedPosMs >= 0 && bufferedPos > mLastBufferedPosMs) {
+            mLastProgressMs = now;
+        }
+        mLastBufferedPosMs = bufferedPos;
+
+        // Buffering after a seek (set aside while it was fresh) that goes on: a stall like any other
+        if (mBufferingSinceMs < 0 && mWasReady && player.getPlayWhenReady()
+                && player.getPlaybackState() == Player.STATE_BUFFERING && now >= mGraceUntilMs) {
+            mBufferingSinceMs = now;
+        }
+
         checkLongStall(player, now);
-        checkSlowStart(player);
+        checkSlowStart(player, now);
+        checkHeadroom(player, now, playing && normalSpeed);
 
         if (!playing || !normalSpeed || now < mGraceUntilMs || !AdaptiveQuality.isEnabled()) {
             resetWindow();
@@ -181,14 +207,14 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mStrikes = 0;
             Format format = player.getVideoFormat();
             CarAutoQuality.onFramesDropping(format);
-            stepDown();
+            stepDown(now);
         }
     }
 
     private void checkLongStall(SimpleExoPlayer player, long now) {
         if (mBufferingSinceMs > 0 && player.getPlayWhenReady() && player.getPlaybackState() == Player.STATE_BUFFERING
                 && now - mBufferingSinceMs >= LONG_STALL_MS && canStepForStalls(now)) {
-            onStalls(player);
+            onStalls(player, now);
         }
     }
 
@@ -196,7 +222,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
      * The video doesn't start: the picked version is too heavy for the signal here (a fast road's measurement, a weak
      * area now). Go lighter every few seconds until it plays - the YouTube app does the same by starting low.
      */
-    private void checkSlowStart(SimpleExoPlayer player) {
+    private void checkSlowStart(SimpleExoPlayer player, long now) {
         boolean waiting = !mWasReady && mGroups != null && player.getPlayWhenReady()
                 && player.getPlaybackState() == Player.STATE_BUFFERING;
         if (!waiting) {
@@ -208,11 +234,15 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             return;
         }
         mStartWaitMs = 0;
+        if (!dataArriving(now)) {
+            sayNoData("no picture after " + (SLOW_START_MS / 1000) + " s");
+            return;
+        }
         RestoreTrackSelector selector = mSelector.get();
         long meter = selector != null && player.getTotalBufferedDuration() > 0 ? selector.getBitrateEstimate() : -1;
         CarPerf.log("no picture after " + (SLOW_START_MS / 1000) + " s");
         if (CarAutoQuality.onStalls(CarAutoQuality.pickedVideo(), meter)) {
-            stepDown();
+            stepDown(now);
         }
     }
 
@@ -220,20 +250,64 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         return mSteppedForStallsMs < 0 || now - mSteppedForStallsMs >= STEP_AGAIN_MS;
     }
 
-    private void onStalls(SimpleExoPlayer player) {
-        if (!AdaptiveQuality.isEnabled()) {
-            return;
-        }
-        // Lower, and again if it keeps stalling (a weak area): down to the lightest version, then it just waits
-        mSteppedForStallsMs = SystemClock.elapsedRealtime();
-        RestoreTrackSelector selector = mSelector.get();
-        long meter = selector != null && mPlayedMs >= 6_000 ? selector.getBitrateEstimate() : -1;
-        if (CarAutoQuality.onStalls(player.getVideoFormat(), meter)) {
-            stepDown();
+    /** Loaded data grew recently: the signal is weak, not gone. */
+    private boolean dataArriving(long now) {
+        return mLastProgressMs > 0 && now - mLastProgressMs <= DATA_RECENT_MS;
+    }
+
+    private void sayNoData(String what) {
+        if (!mSaidNoData) {
+            mSaidNoData = true;
+            CarPerf.log(what + ", but no data is arriving: not lowering (a tunnel isn't fixed by going lower)");
         }
     }
 
-    private void stepDown() {
+    /** Upstream's long-buffering fixer (client switch, reload, app restart) asks: are we on it? */
+    public static boolean shouldDeferUpstreamFix() {
+        CarPlaybackMonitor monitor = sCurrent;
+        return monitor != null && AdaptiveQuality.isEnabled() && monitor.dataArriving(SystemClock.elapsedRealtime());
+    }
+
+    private void onStalls(SimpleExoPlayer player, long now) {
+        if (!AdaptiveQuality.isEnabled()) {
+            return;
+        }
+        if (!dataArriving(now)) {
+            sayNoData("stalled");
+            return;
+        }
+        // Lower, and again if it keeps stalling (a weak area): down to the lightest version, then it just waits
+        mSteppedForStallsMs = now;
+        RestoreTrackSelector selector = mSelector.get();
+        long meter = selector != null && mPlayedMs >= 6_000 ? selector.getBitrateEstimate() : -1;
+        if (CarAutoQuality.onStalls(player.getVideoFormat(), meter)) {
+            stepDown(now);
+        }
+    }
+
+    /**
+     * Playing smoothly with plenty loaded ahead, and the measured speed would carry a clearly better picture: lift the
+     * per-video limit (a change costs a short re-buffer, so wait longer between each one).
+     */
+    private void checkHeadroom(SimpleExoPlayer player, long now, boolean playingNormally) {
+        if (!playingNormally || !AdaptiveQuality.isEnabled() || mPlayedMs < WARM_AFTER_MS || now < mGraceUntilMs
+                || (mLastStepMs > 0 && now - mLastStepMs < mUpWaitMs)
+                || (mLastStallMs > 0 && now - mLastStallMs < UP_QUIET_MS)
+                || player.getTotalBufferedDuration() < UP_MIN_BUFFER_MS) {
+            return;
+        }
+        RestoreTrackSelector selector = mSelector.get();
+        if (selector != null && CarAutoQuality.liftCapForHeadroom(selector.getBitrateEstimate())) {
+            mUpWaitMs = Math.min(mUpWaitMs * 2, UP_MAX_WAIT_MS);
+            mLastStepMs = now;
+            selector.reselect();
+            grace();
+        }
+    }
+
+    private void stepDown(long now) {
+        mLastStepMs = now;
+        mSaidNoData = false;
         RestoreTrackSelector selector = mSelector.get();
         if (selector != null) {
             selector.reselect();
@@ -262,7 +336,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                 CarPerf.log("stall " + stallMs + " ms" + (repeated ? " (again)" : ""));
                 SimpleExoPlayer player = mPlayer.get();
                 if (player != null && repeated && canStepForStalls(now)) {
-                    onStalls(player);
+                    onStalls(player, now);
                 }
             }
             mBufferingSinceMs = -1;
@@ -282,6 +356,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
             grace();
             mBufferingSinceMs = -1;
+            mLastBufferedPosMs = -1; // the position jumped: compare loaded data from the next tick on
         }
     }
 
@@ -289,6 +364,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     public void onSeekProcessed() {
         grace();
         mBufferingSinceMs = -1;
+        mLastBufferedPosMs = -1;
     }
 
     @Override
@@ -296,10 +372,16 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         if (trackGroups != null && !trackGroups.equals(mGroups)) { // another video
             mGroups = trackGroups;
             mWasReady = false;
+            mBufferingSinceMs = -1; // a stall of the last video isn't this one's
             mLastStallMs = -1;
             mSteppedForStallsMs = -1;
             mStartWaitMs = 0;
             mStrikes = 0;
+            mLastBufferedPosMs = -1;
+            mLastProgressMs = 0;
+            mLastStepMs = 0;
+            mUpWaitMs = UP_FIRST_WAIT_MS;
+            mSaidNoData = false;
         }
         grace();
     }

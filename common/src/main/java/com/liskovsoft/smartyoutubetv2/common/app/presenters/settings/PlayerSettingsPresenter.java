@@ -370,9 +370,7 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
                 option -> mPlayerTweaksData.setAudioTimeStretchingEnabled(option.isSelected()),
                 mPlayerTweaksData.isAudioTimeStretchingEnabled()));
 
-        options.add(UiOptionItem.from(getContext().getString(R.string.player_section_playlist),
-                option -> mPlayerTweaksData.setSectionPlaylistEnabled(option.isSelected()),
-                mPlayerTweaksData.isSectionPlaylistEnabled()));
+        // Car build: "Section playlist" is always off (autoplay follows YouTube's Up next), so no toggle
 
         options.add(UiOptionItem.from(getContext().getString(R.string.player_chapter_notification2),
                 option -> mPlayerTweaksData.setChapterNotificationEnabled(option.isSelected()),

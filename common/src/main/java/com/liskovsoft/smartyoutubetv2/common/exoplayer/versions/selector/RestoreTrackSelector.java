@@ -220,7 +220,7 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
             Definition auto = null;
             try {
                 String language = mAudioLanguage != null ? mAudioLanguage.get() : null;
-                auto = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.pickAudio(groups, formatSupports, language);
+                auto = com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.pickAudio(groups, formatSupports, language, getBitrateEstimate());
             } catch (Throwable e) {
                 Log.e(TAG, "Auto sound failed: " + e);
             }

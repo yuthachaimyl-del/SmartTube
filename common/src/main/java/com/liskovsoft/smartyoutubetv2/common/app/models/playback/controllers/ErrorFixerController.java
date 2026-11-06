@@ -76,7 +76,19 @@ public class ErrorFixerController extends BasePlayerController implements OnLong
 
         if (isStreamEnded()) {
             getMainController().onPlayEnd();
-        } else if (isOfflineVideo() && isSubtitlesEnabled()) {
+            return;
+        }
+
+        // Car build: data is arriving, only slowly (a weak signal): auto picture is stepping the quality down - give
+        // that time instead of switching the YouTube client, reloading, or restarting the app (all of which start the
+        // loading over on the same weak link). Those fixes still run once nothing arrives at all for a while.
+        if (com.liskovsoft.smartyoutubetv2.common.car.CarPlaybackMonitor.shouldDeferUpstreamFix()) {
+            Log.w(TAG, "Long buffering on a weak signal: leaving it to auto picture for now");
+            mBufferingDetector.onStartBuffering(); // ask again in 20 s
+            return;
+        }
+
+        if (isOfflineVideo() && isSubtitlesEnabled()) {
             // Long loading subtitles cause hangs
             disableSubtitles();
             mVideoLoaderController.reloadVideo();
