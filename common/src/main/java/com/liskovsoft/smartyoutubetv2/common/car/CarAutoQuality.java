@@ -303,6 +303,7 @@ public final class CarAutoQuality {
         return f != null && f.bitrate > 0 && hasLighter((long) (f.bitrate * 0.85f));
     }
 
+    private static long sHeadroomLogMs;
     public static final int UP_NONE = 0;
     public static final int UP_SWITCHED = 1;  // the better version plays from the next piece of video on
     public static final int UP_RESELECT = 2;  // re-select (the stream is rebuilt: a short re-buffer)
@@ -326,6 +327,12 @@ public final class CarAutoQuality {
             }
         }
         if (best == null || best.bitrate < now.bitrate * 1.25f || !better(best, now)) {
+            long t = android.os.SystemClock.elapsedRealtime();
+            if (t - sHeadroomLogMs > 60_000) {
+                sHeadroomLogMs = t;
+                CarPerf.log(String.format(Locale.US, "headroom check: at %s, network ~%.1f Mbps, best within %.1f Mbps: %s (%d versions)",
+                        describe(now), meterEstimate / 1_000_000f, budget / 1_000_000f, best != null ? describe(best) : "none", sCandidates.size()));
+            }
             return UP_NONE;
         }
         if (switchTo(best)) {

@@ -72,6 +72,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private boolean mSaidNoData;
     @Nullable private TrackGroupArray mGroups;
     @Nullable private Format mShownFormat; // the version the decoder is on (logged when it changes)
+    private long mHeadroomLogMs;
 
     private CarPlaybackMonitor(SimpleExoPlayer player, RestoreTrackSelector selector) {
         mPlayer = new WeakReference<>(player);
@@ -312,6 +313,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                 || (mLastStepMs > 0 && now - mLastStepMs < mUpWaitMs)
                 || (mLastStallMs > 0 && now - mLastStallMs < UP_QUIET_MS)
                 || player.getTotalBufferedDuration() < UP_MIN_BUFFER_MS) {
+            if (playingNormally && mPlayedMs >= WARM_AFTER_MS && now - mHeadroomLogMs > 60_000) {
+                mHeadroomLogMs = now;
+                CarPerf.log(String.format(Locale.US, "headroom wait: grace %d s, step %d s ago (wait %d s), stall %d s ago, %d s loaded",
+                        Math.max(0, mGraceUntilMs - now) / 1000, mLastStepMs > 0 ? (now - mLastStepMs) / 1000 : -1, mUpWaitMs / 1000,
+                        mLastStallMs > 0 ? (now - mLastStallMs) / 1000 : -1, player.getTotalBufferedDuration() / 1000));
+            }
             return;
         }
         RestoreTrackSelector selector = mSelector.get();
