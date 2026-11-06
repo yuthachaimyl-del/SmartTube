@@ -462,7 +462,9 @@ public class PlayerTweaksData implements ProfileChangeListener {
     }
 
     public boolean isSectionPlaylistEnabled() {
-        return mIsSectionPlaylistEnabled;
+        // Car build: after a video opened from Home / search / a channel, continue with YouTube's own "Up next"
+        // (related to what is playing) instead of the next card of that page.
+        return false;
     }
 
     public void setSectionPlaylistEnabled(boolean enable) {

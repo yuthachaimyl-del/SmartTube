@@ -36,6 +36,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long SAVE_EVERY_MS = 60_000;
     private static final long LONG_STALL_MS = 5_000;
     private static final long STALLS_WITHIN_MS = 90_000;
+    private static final long SLOW_START_MS = 8_000;    // no picture after this long: the version is too heavy for here
+    private static final long STEP_AGAIN_MS = 15_000;   // a weak area: step down again if it still stalls
     private static CarPlaybackMonitor sCurrent;
     private final WeakReference<SimpleExoPlayer> mPlayer;
     private final WeakReference<RestoreTrackSelector> mSelector;
@@ -53,7 +55,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private long mLastStallMs = -1;
     private long mPlayedMs;
     private long mSinceSaveMs;
-    private boolean mSteppedForStalls;
+    private long mSteppedForStallsMs = -1;
+    private long mStartWaitMs;
     @Nullable private TrackGroupArray mGroups;
 
     private CarPlaybackMonitor(SimpleExoPlayer player, RestoreTrackSelector selector) {
@@ -143,6 +146,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         }
 
         checkLongStall(player, now);
+        checkSlowStart(player);
 
         if (!playing || !normalSpeed || now < mGraceUntilMs || !AdaptiveQuality.isEnabled()) {
             resetWindow();
@@ -183,18 +187,50 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
 
     private void checkLongStall(SimpleExoPlayer player, long now) {
         if (mBufferingSinceMs > 0 && player.getPlayWhenReady() && player.getPlaybackState() == Player.STATE_BUFFERING
-                && now - mBufferingSinceMs >= LONG_STALL_MS && !mSteppedForStalls) {
+                && now - mBufferingSinceMs >= LONG_STALL_MS && canStepForStalls(now)) {
             onStalls(player);
         }
+    }
+
+    /**
+     * The video doesn't start: the picked version is too heavy for the signal here (a fast road's measurement, a weak
+     * area now). Go lighter every few seconds until it plays - the YouTube app does the same by starting low.
+     */
+    private void checkSlowStart(SimpleExoPlayer player) {
+        boolean waiting = !mWasReady && mGroups != null && player.getPlayWhenReady()
+                && player.getPlaybackState() == Player.STATE_BUFFERING;
+        if (!waiting) {
+            mStartWaitMs = 0;
+            return;
+        }
+        mStartWaitMs += TICK_MS;
+        if (mStartWaitMs < SLOW_START_MS || !AdaptiveQuality.isEnabled()) {
+            return;
+        }
+        mStartWaitMs = 0;
+        RestoreTrackSelector selector = mSelector.get();
+        long meter = selector != null && player.getTotalBufferedDuration() > 0 ? selector.getBitrateEstimate() : -1;
+        CarPerf.log("no picture after " + (SLOW_START_MS / 1000) + " s");
+        if (CarAutoQuality.onStalls(CarAutoQuality.pickedVideo(), meter)) {
+            stepDown();
+        }
+    }
+
+    private boolean canStepForStalls(long now) {
+        return mSteppedForStallsMs < 0 || now - mSteppedForStallsMs >= STEP_AGAIN_MS;
     }
 
     private void onStalls(SimpleExoPlayer player) {
         if (!AdaptiveQuality.isEnabled()) {
             return;
         }
-        mSteppedForStalls = true; // once per video: a dead zone isn't fixed by going lower and lower
-        CarAutoQuality.onStalls(player.getVideoFormat());
-        stepDown();
+        // Lower, and again if it keeps stalling (a weak area): down to the lightest version, then it just waits
+        mSteppedForStallsMs = SystemClock.elapsedRealtime();
+        RestoreTrackSelector selector = mSelector.get();
+        long meter = selector != null && mPlayedMs >= 6_000 ? selector.getBitrateEstimate() : -1;
+        if (CarAutoQuality.onStalls(player.getVideoFormat(), meter)) {
+            stepDown();
+        }
     }
 
     private void stepDown() {
@@ -225,7 +261,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                 mLastStallMs = now;
                 CarPerf.log("stall " + stallMs + " ms" + (repeated ? " (again)" : ""));
                 SimpleExoPlayer player = mPlayer.get();
-                if (player != null && repeated && !mSteppedForStalls) {
+                if (player != null && repeated && canStepForStalls(now)) {
                     onStalls(player);
                 }
             }
@@ -261,7 +297,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mGroups = trackGroups;
             mWasReady = false;
             mLastStallMs = -1;
-            mSteppedForStalls = false;
+            mSteppedForStallsMs = -1;
+            mStartWaitMs = 0;
             mStrikes = 0;
         }
         grace();

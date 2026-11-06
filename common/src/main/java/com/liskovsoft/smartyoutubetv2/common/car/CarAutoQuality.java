@@ -38,6 +38,9 @@ public final class CarAutoQuality {
     private static final int MAX_SHORT_SIDE = 1080; // car screens: 1920x720 and 2400x896
     private static final long FIRST_ESTIMATE = 3_000_000; // nothing measured yet: about 720p
     private static final float BANDWIDTH_SHARE = 0.75f;
+    /** Below this budget the network is weak: lighter sound too, so the picture gets the bandwidth. */
+    private static final long WEAK_BUDGET = 800_000;
+    private static volatile boolean sWeak;
     private static SharedPreferences sPrefs;
     private static volatile boolean sMeterWarm;
     @Nullable private static TrackGroupArray sVideoGroups; // the video the per-video limits belong to
@@ -101,8 +104,13 @@ public final class CarAutoQuality {
         final int cap = sVideoBitrateCap;
         c = keep(c, groups, f -> f.bitrate <= 0 || f.bitrate <= cap);
 
-        long estimate = meterEstimate > 0 && sMeterWarm ? meterEstimate : savedEstimate();
-        long budget = (long) (estimate * BANDWIDTH_SHARE);
+        // Nothing measured in this session yet (car just started, maybe somewhere with a weak signal): start no higher
+        // than the first-time level (~720p), whatever an earlier drive on a fast road measured. Once a video has
+        // played a while, the live measurement takes over.
+        long estimate = meterEstimate > 0 && sMeterWarm ? meterEstimate : Math.min(savedEstimate(), FIRST_ESTIMATE);
+        final long budget = cap != Integer.MAX_VALUE ? Math.min((long) (estimate * BANDWIDTH_SHARE), cap)
+                : (long) (estimate * BANDWIDTH_SHARE);
+        sWeak = budget < WEAK_BUDGET;
         List<int[]> fit = filter(c, groups, f -> f.bitrate <= 0 || f.bitrate <= budget);
 
         int[] best = null;
@@ -162,14 +170,50 @@ public final class CarAutoQuality {
         CarPerf.log("frames dropping at " + describe(f) + ": use lighter " + family + " from now on");
     }
 
-    /** Playback keeps stalling: below this bit rate for the rest of the video, and start lower next time. */
-    public static synchronized void onStalls(@Nullable Format f) {
-        if (f == null || f.bitrate <= 0) {
-            return;
+    /**
+     * Playback keeps stalling (or never starts): below this bit rate for the rest of the video - lower still when the
+     * network measured less - and start lower next time. Returns false when it's already the lightest version.
+     */
+    public static synchronized boolean onStalls(@Nullable Format f, long meterEstimate) {
+        if (f == null) {
+            f = sVideo;
         }
-        sVideoBitrateCap = f.bitrate - 1;
-        saveEstimate((long) (f.bitrate / BANDWIDTH_SHARE * 0.8f));
-        CarPerf.log("stalls at " + describe(f) + ": lower for this video");
+        if (f == null || f.bitrate <= 0) {
+            return false;
+        }
+        long cap = f.bitrate - 1;
+        if (meterEstimate > 0) {
+            cap = Math.min(cap, (long) (meterEstimate * BANDWIDTH_SHARE));
+        }
+        if (sVideoGroups != null && !hasLighter(sVideoGroups, (int) cap)) {
+            CarPerf.log("stalls at " + describe(f) + ": already the lightest version");
+            sWeak = true;
+            return false;
+        }
+        sVideoBitrateCap = (int) Math.max(cap, 1);
+        saveEstimate((long) (Math.max(cap, 1) / BANDWIDTH_SHARE));
+        CarPerf.log(String.format(Locale.US, "stalls at %s: lower for this video (under %.2f Mbps)",
+                describe(f), sVideoBitrateCap / 1_000_000f));
+        return true;
+    }
+
+    /** The video picked for this video (before its first picture appears). */
+    @Nullable
+    public static Format pickedVideo() {
+        return sVideo;
+    }
+
+    private static boolean hasLighter(TrackGroupArray groups, int cap) {
+        for (int g = 0; g < groups.length; g++) {
+            TrackGroup group = groups.get(g);
+            for (int t = 0; t < group.length; t++) {
+                Format f = group.getFormat(t);
+                if (f.width > 0 && f.bitrate > 0 && f.bitrate <= cap && CarCodecs.hasHardwareDecoder(CarCodecs.mimeOf(f))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Auto picked again by the user: start over (try the best levels again). */
@@ -248,6 +292,13 @@ public final class CarAutoQuality {
         c = keep(c, groups, f -> !isMultichannel(f)); // stereo system: no downmix
 
         int[] best = null;
+        final boolean weak = sWeak;
+        if (weak) { // weak signal: a light version (~50-70 kbps sounds fine in a moving car), the picture needs the bandwidth
+            List<int[]> light = filter(c, groups, f -> f.bitrate > 0 && f.bitrate <= 80_000);
+            if (!light.isEmpty()) {
+                c = light;
+            }
+        }
         for (int[] gt : c) {
             if (best == null || audioScore(format(groups, gt)) > audioScore(format(groups, best))) {
                 best = gt;
@@ -256,7 +307,7 @@ public final class CarAutoQuality {
 
         Format f = format(groups, best);
         sAudio = f;
-        CarPerf.log("auto sound: " + describeAudio(f) + " (" + all.size() + " versions)");
+        CarPerf.log("auto sound: " + describeAudio(f) + (weak ? " (weak signal)" : "") + " (" + all.size() + " versions)");
         return new Definition(groups.get(best[0]), best[1]);
     }
 
