@@ -20,8 +20,9 @@ public final class CarSections {
         void onResult(List<Video> videos, String error);
     }
 
-    public static final String[] TITLES = {"หน้าแรก", "ติดตาม", "ประวัติ", "เพลง", "ข่าว", "เกม", "ไลฟ์"};
+    public static final String[] TITLES = {"หน้าแรก", "คลัง", "ประวัติ", "เพลง", "รายการ", "ตลก", "ติดตาม", "ข่าว", "ไลฟ์"};
     private static final int MAX_VIDEOS = 120;
+    private static final String NEED_LOGIN = "โหลดไม่ได้ (ต้องล็อกอินก่อน?)";
 
     private CarSections() {
     }
@@ -32,20 +33,35 @@ public final class CarSections {
         List<Video> out = new ArrayList<>();
         try {
             switch (index) {
-                case 1:
-                    return s.getSubscriptionsObserve().subscribe(
-                            g -> { add(out, g); post(main, callback, out, null); },
-                            e -> post(main, callback, out, "โหลดไม่ได้ (ต้องล็อกอินก่อน?)"));
+                case 1: // library: the saved playlists (Watch later, Liked, own lists), one row each, flattened
+                    return s.getPlaylistRowsObserve().subscribe(
+                            groups -> {
+                                if (groups != null) {
+                                    for (MediaGroup g : groups) {
+                                        add(out, g);
+                                    }
+                                }
+                                post(main, callback, new ArrayList<>(out), null);
+                            },
+                            e -> post(main, callback, out, NEED_LOGIN),
+                            () -> post(main, callback, new ArrayList<>(out), out.isEmpty() ? "ยังไม่มีคลิปที่บันทึกไว้" : null));
                 case 2:
                     return s.getHistoryObserve().subscribe(
                             g -> { add(out, g); post(main, callback, out, null); },
-                            e -> post(main, callback, out, "โหลดไม่ได้ (ต้องล็อกอินก่อน?)"));
+                            e -> post(main, callback, out, NEED_LOGIN));
+                case 4: // YouTube has no browse section for these two: a search does it
+                    return search("รายการ ย้อนหลัง", callback);
+                case 5:
+                    return search("ตลก", callback);
+                case 6:
+                    return s.getSubscriptionsObserve().subscribe(
+                            g -> { add(out, g); post(main, callback, out, null); },
+                            e -> post(main, callback, out, NEED_LOGIN));
                 default:
                     io.reactivex.Observable<List<MediaGroup>> rows =
                             index == 3 ? s.getMusicObserve() :
-                            index == 4 ? s.getNewsObserve() :
-                            index == 5 ? s.getGamingObserve() :
-                            index == 6 ? s.getLiveObserve() : s.getHomeObserve();
+                            index == 7 ? s.getNewsObserve() :
+                            index == 8 ? s.getLiveObserve() : s.getHomeObserve();
                     return rows.subscribe(
                             groups -> {
                                 if (groups != null) {

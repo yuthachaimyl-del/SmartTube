@@ -131,11 +131,10 @@ public class BrowseFragment extends BrowseSupportFragment implements BrowseView 
                     if (getHeadersSupportFragment().getSelectedPosition() != newPosition) {
                         // touch screen support
                         getHeadersSupportFragment().setSelectedPosition(newPosition);
-                    } else {
-                        // update section when clicked or pressed
-                        mBrowsePresenter.onSectionFocused((int) headerId);
-                        startHeadersTransitionSafe(false);
                     }
+                    // Car build: one tap opens the section full width (it took a second tap on a touch screen)
+                    mBrowsePresenter.onSectionFocused((int) headerId);
+                    startHeadersTransitionSafe(false);
                 }
         );
 
