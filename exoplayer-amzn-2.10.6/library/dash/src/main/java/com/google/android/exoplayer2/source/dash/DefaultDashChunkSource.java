@@ -240,7 +240,7 @@ public class DefaultDashChunkSource implements DashChunkSource {
 
   @Override
   public int getPreferredQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
-    if (fatalError != null || trackSelection.length() < 2 || trackSelection instanceof PinnedTrackSelection) {
+    if (fatalError != null || trackSelection.length() < 2) {
       return queue.size();
     }
     return trackSelection.evaluateQueueSize(playbackPositionUs, queue);

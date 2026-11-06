@@ -321,7 +321,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
 
     @Override
     public int getPreferredQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
-        if (fatalError != null || trackSelection.length() < 2 || trackSelection instanceof PinnedTrackSelection) {
+        if (fatalError != null || trackSelection.length() < 2
+                || (manifest.dynamic && trackSelection instanceof PinnedTrackSelection)) { // live: no switching (see maybeSwitchFormat)
             return queue.size();
         }
         return trackSelection.evaluateQueueSize(playbackPositionUs, queue);

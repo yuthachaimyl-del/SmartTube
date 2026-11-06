@@ -71,6 +71,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private long mUpWaitMs = UP_FIRST_WAIT_MS;
     private boolean mSaidNoData;
     @Nullable private TrackGroupArray mGroups;
+    @Nullable private Format mShownFormat; // the version the decoder is on (logged when it changes)
 
     private CarPlaybackMonitor(SimpleExoPlayer player, RestoreTrackSelector selector) {
         mPlayer = new WeakReference<>(player);
@@ -156,6 +157,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             } else if (mPlayedMs == WARM_AFTER_MS) {
                 saveEstimate();
             }
+        }
+
+        Format shown = player.getVideoFormat();
+        if (shown != null && shown != mShownFormat && !shown.equals(mShownFormat)) {
+            mShownFormat = shown;
+            CarPerf.log("picture now " + CarAutoQuality.describeFormat(shown) + " at " + player.getCurrentPosition() / 1000 + " s");
         }
 
         // Is data arriving? Loaded data grows while a chunk downloads (slowly on a weak signal, not at all in a tunnel)

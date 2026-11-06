@@ -503,6 +503,11 @@ public final class CarAutoQuality {
         return f != null ? describeAudio(f) : null;
     }
 
+    /** e.g. "480p VP9 1.0 Mbps" */
+    public static String describeFormat(Format f) {
+        return describe(f);
+    }
+
     private static String describe(Format f) {
         int fps = Math.round(fps(f));
         return shortSide(f) + "p" + (fps > 30 ? String.valueOf(fps) : "") + " " + family(f).toUpperCase(Locale.ROOT)

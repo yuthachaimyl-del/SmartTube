@@ -21,6 +21,10 @@ import java.util.List;
  * long as a re-selection yields an equal selection (same tracks, same {@link Pick#generation}); a step down while the
  * video is stalled bumps the generation on purpose, so the stream is rebuilt right away (the slow download is
  * dropped) instead of waiting for the next piece.
+ * <p>
+ * A change doesn't wait for the loaded data to play out either (up to a minute is loaded ahead): the pieces of the
+ * old version beyond the next {@link #KEEP_US} are dropped and loaded again in the new one, so the better picture
+ * shows within seconds - still without a stop, as the next seconds are already there.
  */
 public final class CarTrackSelection extends BaseTrackSelection implements PinnedTrackSelection {
     /** {@link TrackSelection.Definition#data} that asks the factory for this kind of selection. */
@@ -66,6 +70,7 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
         }
     }
 
+    private static final long KEEP_US = 10_000_000; // enough to fetch the first piece of the new version meanwhile
     private final int mGeneration;
     private volatile int mPending;
     private volatile int mSelected;
@@ -115,6 +120,19 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
     public void updateSelectedTrack(long playbackPositionUs, long bufferedDurationUs, long availableDurationUs,
                                     List<? extends MediaChunk> queue, MediaChunkIterator[] mediaChunkIterators) {
         mSelected = mPending; // a change applies from here (the chunk source reads the selection right after this)
+    }
+
+    @Override
+    public int evaluateQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
+        Format wanted = getFormat(mPending);
+        long keepUntilUs = playbackPositionUs + KEEP_US;
+        for (int i = 0; i < queue.size(); i++) {
+            MediaChunk chunk = queue.get(i);
+            if (chunk.trackFormat != wanted && chunk.startTimeUs != C.TIME_UNSET && chunk.startTimeUs > keepUntilUs) {
+                return i; // from here on: loaded in the old version and not needed for a while - load it again in the new one
+            }
+        }
+        return queue.size();
     }
 
     @Override
