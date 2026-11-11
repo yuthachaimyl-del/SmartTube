@@ -70,6 +70,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long LAST_RESORT_BUFFER_MS = 6_000;
     private static final long DOWN_AGAIN_MS = 5_000;
     private static final long TREND_MS = 4_000;
+    private static final long GROW_OVER_MS = 3_000;
     private static final long STALL_REACT_MS = 2_000;       // stalled this long: restart at what the network carries
     private static final long STALL_REACT_HEAVY_MS = 700;   // (this long when a step down was already decided)
     private static final long START_REACT_MS = 3_000;       // no picture after this much downloading at the start
@@ -415,8 +416,11 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mSlowSinceMs = now;
         }
         boolean slowForLong = mSlowSinceMs > 0 && now - mSlowSinceMs >= SLOW_FOR_LONG_MS;
+        // (Right after a start or a seek little is loaded and the speed of the first moments of a download reads low:
+        // as long as what's loaded keeps growing, the network is doing fine.)
         if (slowNow && now >= mGraceUntilMs
-                && (bufferedMs < URGENT_BUFFER_MS || ((bufferedMs < DOWN_BUFFER_MS || slowForLong) && draining(now, bufferedMs)))
+                && ((bufferedMs < URGENT_BUFFER_MS && !growing(now, bufferedMs))
+                        || ((bufferedMs < DOWN_BUFFER_MS || slowForLong) && draining(now, bufferedMs)))
                 && (mLastDownMs == 0 || now - mLastDownMs >= DOWN_AGAIN_MS)) {
             mUpStreak = 0;
             // With a comfortable amount loaded a short dip counts half; with little, only what the network does right now
@@ -454,7 +458,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         // 4. The network carries a clearly better version: up
         Format better = safe > 0 && !heavyInFlight ? CarAutoQuality.bestWithin((long) (safe * UP_SHARE / rate)) : null;
         boolean fits = better != null && CarAutoQuality.isBetter(better, cur) && better.bitrate >= cur.bitrate * 1.15f;
-        boolean thin = fits && meter.getSlowActiveMs() < SOLID_ESTIMATE_MS;
+        boolean thin = fits && !live && meter.getSlowActiveMs() < SOLID_ESTIMATE_MS; // (live: every step is a restart - one)
         if (thin) {
             // The speed is only known from a few short bursts (small pieces now and then into a full buffer): one step.
             // Loading the better pieces is steady downloading - the next step then goes by a solid measurement.
@@ -481,7 +485,9 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                     && (mLastUpMs == 0 || now - mLastUpMs >= UP_AFTER_UP_MS)
                     && (mLastDownMs == 0 || now - mLastDownMs >= UP_AFTER_DOWN_MS * mPenalty)
                     && (mLastStallMs <= 0 || now - mLastStallMs >= UP_AFTER_STALL_MS);
-            if (mUpStreak >= UP_STREAK && settled && bufferedMs >= minBuffer) {
+            // (A live stream is close to its live edge: little is ever loaded ahead, and going up there is a restart
+            // of the stream anyway - what's loaded doesn't count.)
+            if (mUpStreak >= UP_STREAK && settled && (live || bufferedMs >= minBuffer)) {
                 // Keep enough of what's loaded to fetch the first better piece twice over; the rest is fetched again
                 long keepMs = Math.max(4_000, Math.min(15_000, (long) (2 * 7_000 * (needBetter / (double) safe)) + 2_000));
                 if (!live && CarAutoQuality.switchTo(better, keepMs * 1_000)) {
@@ -568,6 +574,21 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             }
         }
         return oldest >= 0 && bufferedMs + 1_000 < oldest;
+    }
+
+    /**
+     * What's loaded ahead grew over the last seconds (also assumed when those seconds aren't on record yet - right after
+     * a start or a seek).
+     */
+    private boolean growing(long now, long bufferedMs) {
+        long before = -1;
+        for (int i = 0; i < HISTORY; i++) {
+            long age = now - mHistoryMs[i];
+            if (mHistoryMs[i] != 0 && age >= GROW_OVER_MS - TICK_MS / 2 && age <= GROW_OVER_MS + TICK_MS) {
+                before = Math.max(before, mHistoryBuffer[i]);
+            }
+        }
+        return before < 0 || bufferedMs >= before + 1_000;
     }
 
     private boolean canRestart(long now) {
