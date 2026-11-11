@@ -424,13 +424,10 @@ public class SabrManifest implements FilterableManifest<SabrManifest> {
             }
         }
 
-        // Car build: formats this track switched away from in the middle of the stream count as fully buffered, so the
-        // server sends only the one playing now
-        for (FormatId retired : activeStream.getRetiredFormatIds()) {
-            if (retired.getItag() != currentFormatKey) {
-                bufferedRanges.add(createFullBufferRange(retired));
-            }
-        }
+        // Car build: nothing is reported for a format this track switched away from in the middle of the stream. (v42/43
+        // reported it as fully buffered. The server then held back the new format whenever the old one was the better
+        // picture - only its init segment came, with "back off 2 s", over and over: every step down hung the video.)
+        // The server sends what the request selects; anything else is thrown away by the processor (retired formats).
 
         return new Pair<>(bufferedRanges, formatToDiscard);
     }
