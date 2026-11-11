@@ -120,6 +120,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private long mLastSoundChangeMs;
     private long mSlowSinceMs;
     private boolean mLastUpThin;
+    private long mRegrettedUpMs;
     private boolean mSaidNoData;
     private final long[] mHistoryMs = new long[HISTORY];     // the last seconds: when,
     private final long[] mHistoryBuffer = new long[HISTORY]; // how much was loaded ahead,
@@ -469,11 +470,13 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mUpStreak++;
             long needBetter = (long) (CarAutoQuality.need(better) * rate);
             long minBuffer = safe * 0.4f >= needBetter ? UP_MIN_BUFFER_FAST_MS : UP_MIN_BUFFER_MS;
-            // One step at a time: the next one waits until the last one is on screen (or long enough). Steps taken
-            // faster than that only load pieces that are replaced again before they are ever shown.
-            // (After a careful single step the next one may follow as soon as the speed is known for sure.)
+            // While the measured speed is still climbing (the long view lags behind the short one after the network
+            // got better) the next step waits until the last one is on screen: steps taken faster than that load pieces
+            // that are replaced again before they are ever shown. Once the two views agree, the speed is known - go.
+            // (And after a careful single step the next one may follow as soon as the speed is known for sure.)
+            boolean measured = slow > 0 && fast > 0 && slow >= fast * 0.85f;
             boolean lastUpShown = mLastUpMs == 0 || now - mLastUpMs >= UP_SHOWN_WAIT_MS || (mLastUpThin && !thin)
-                    || CarAutoQuality.sameVersion(mShownFormat, cur);
+                    || measured || CarAutoQuality.sameVersion(mShownFormat, cur);
             boolean settled = now >= mGraceUntilMs && lastUpShown
                     && (mLastUpMs == 0 || now - mLastUpMs >= UP_AFTER_UP_MS)
                     && (mLastDownMs == 0 || now - mLastDownMs >= UP_AFTER_DOWN_MS * mPenalty)
@@ -572,7 +575,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     }
 
     private void noteDown(long now) {
-        if (mLastUpMs > 0 && now - mLastUpMs < UP_REGRET_MS) {
+        if (mLastUpMs > 0 && now - mLastUpMs < UP_REGRET_MS && mLastUpMs != mRegrettedUpMs) {
+            mRegrettedUpMs = mLastUpMs; // (one step up is regretted once, however many steps down follow it)
             mPenalty = Math.min(mPenalty * 2, MAX_PENALTY);
         }
         mLastDownMs = now;
@@ -707,6 +711,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mLastBufferedPosMs = -1;
             mLastProgressMs = 0;
             mLastUpMs = 0;
+            mRegrettedUpMs = 0;
             mLastDownMs = 0;
             mLastRestartMs = 0;
             mPenalty = 1;
