@@ -16,7 +16,37 @@ public final class CarPerf {
     private CarPerf() {
     }
 
+    private static boolean sTestClientDone;
+
+    /**
+     * Test hook (adb shell setprop log.tag.CarDash DEBUG, then start the app): the first video goes through another
+     * YouTube client, like after the app's own error recovery. Those clients deliver DASH instead of SABR, so that way
+     * of playing can be tested on purpose.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void maybeUseTestClient() {
+        if (sTestClientDone) {
+            return;
+        }
+        sTestClientDone = true;
+        if (!Log.isLoggable("CarDash", Log.DEBUG)) {
+            return;
+        }
+        try {
+            Class<?> serviceClass = Class.forName("com.liskovsoft.youtubeapi.videoinfo.V2.VideoInfoService");
+            Object service = serviceClass.getMethod("instance").invoke(null);
+            Class clientClass = Class.forName("com.liskovsoft.youtubeapi.common.helpers.AppClient");
+            java.lang.reflect.Field next = serviceClass.getDeclaredField("mNextClient");
+            next.setAccessible(true);
+            next.set(service, Enum.valueOf(clientClass, "TV_DOWNGRADED"));
+            Log.i(TAG, "test: this start uses the TV_DOWNGRADED client");
+        } catch (Throwable e) {
+            Log.i(TAG, "test client not set: " + e);
+        }
+    }
+
     public static void start(String what) {
+        maybeUseTestClient();
         sAnyStart = true;
         sStartMs = SystemClock.elapsedRealtime();
         sFirstFrameSeen = false;

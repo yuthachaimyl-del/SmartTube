@@ -36,6 +36,7 @@ public final class LiveBandwidthMeter implements BandwidthMeter, TransferListene
     private long lastByteMs;      // when data last arrived
     private long totalBytes;
     private long lastKnown = -1;  // the last slow estimate that could be computed
+    private long measuredActiveMs; // the download time the last estimate computed rests on
 
     private LiveBandwidthMeter() {
     }
@@ -58,6 +59,14 @@ public final class LiveBandwidthMeter implements BandwidthMeter, TransferListene
             lastKnown = estimate;
         }
         return estimate;
+    }
+
+    /**
+     * How much download time (milliseconds) the slow estimate rests on right now. Little of it means a few short bursts
+     * - small pieces loaded now and then into a full buffer - which say less than a stretch of steady downloading.
+     */
+    public synchronized long getSlowActiveMs() {
+        return estimate(SLOW_ACTIVE_MS) >= 0 ? measuredActiveMs : 0;
     }
 
     /** The smaller of the two views (careful: for deciding what the network carries); -1 when unknown. */
@@ -105,6 +114,7 @@ public final class LiveBandwidthMeter implements BandwidthMeter, TransferListene
                 activeMs += slotActiveMs[i];
             }
         }
+        measuredActiveMs = activeMs;
         if (activeMs < MIN_ACTIVE_MS && bytes < MIN_BYTES) {
             return -1;
         }

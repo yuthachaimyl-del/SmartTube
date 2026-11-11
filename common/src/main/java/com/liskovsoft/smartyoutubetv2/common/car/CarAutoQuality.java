@@ -298,6 +298,18 @@ public final class CarAutoQuality {
         return best;
     }
 
+    /** The next version above this one (one step up); null when it's the best there is. */
+    @Nullable
+    public static synchronized Format nextAbove(@Nullable Format f) {
+        Format next = null;
+        for (Format c : ladder()) {
+            if (isBetter(c, f) && (next == null || better(next, c))) {
+                next = c;
+            }
+        }
+        return next;
+    }
+
     /** The lightest version there is to move to. */
     @Nullable
     public static synchronized Format lightest() {
@@ -308,6 +320,24 @@ public final class CarAutoQuality {
             }
         }
         return best;
+    }
+
+    /**
+     * The same version of the video? The format the decoder reports is the stream's own (read from the data), not the
+     * object from the list of versions, so {@code equals} doesn't do: the version number (itag) decides, else the size.
+     */
+    public static boolean sameVersion(@Nullable Format a, @Nullable Format b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        if (a == b) {
+            return true;
+        }
+        if (a.id != null && b.id != null) {
+            return a.id.equals(b.id);
+        }
+        return a.width == b.width && a.height == b.height && Math.round(fps(a)) == Math.round(fps(b))
+                && family(a).equals(family(b));
     }
 
     /** {@code a} is the better picture (see {@link #better}); a null {@code b} is worse than anything. */

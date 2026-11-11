@@ -55,6 +55,9 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long UP_MIN_BUFFER_FAST_MS = 5_000; // (this much when the network carries the better one twice over)
     private static final int UP_STREAK = 3;                 // the better version must fit this many seconds in a row
     private static final long UP_AFTER_UP_MS = 6_000;
+    private static final long SOLID_ESTIMATE_MS = 2_500;    // download time behind a speed that can be trusted for a big step
+    private static final long UP_SHOWN_WAIT_MS = 30_000;    // (at most this long for the last step up to get on screen)
+    private static final long SLOW_FOR_LONG_MS = 15_000;    // too slow for this long: down even with a lot loaded ahead
     private static final long UP_AFTER_DOWN_MS = 20_000;    // (times the penalty, when ups keep being taken back)
     private static final long UP_AFTER_STALL_MS = 20_000;
     private static final long UP_REGRET_MS = 40_000;        // down again this soon after an up: that up was too eager
@@ -111,6 +114,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private int mPenalty = 1;
     private long mGoodSoundSinceMs;
     private long mLastSoundChangeMs;
+    private long mSlowSinceMs;
+    private boolean mLastUpThin;
     private boolean mSaidNoData;
     private final long[] mHistoryMs = new long[HISTORY];     // the last seconds: when,
     private final long[] mHistoryBuffer = new long[HISTORY]; // how much was loaded ahead,
@@ -312,6 +317,9 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         if (mPenalty > 1 && mLastDownMs > 0 && now - mLastDownMs > PENALTY_FORGET_MS) {
             mPenalty = 1;
         }
+        if (!playing) {
+            mSlowSinceMs = 0;
+        }
 
         // 1. No picture yet
         if (!mWasReady && wants && buffering) {
@@ -377,9 +385,18 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             CarAutoQuality.setAbandonBudget(abandonBudgetUs(bufferedMs, fast, need));
         }
 
-        // The network no longer carries what is coming in and what's loaded is running out: down in time
-        if (fast > 0 && need > fast && loading && bufferedMs < DOWN_BUFFER_MS && now >= mGraceUntilMs
-                && (bufferedMs < URGENT_BUFFER_MS || draining(now, bufferedMs))
+        // The network no longer carries what is coming in and what's loaded is running out: down in time. With a lot
+        // loaded ahead a slow patch is ridden out - unless it has lasted a while: then what's loaded is better kept for
+        // worse to come (a tunnel, a dead spot) than spent on pieces that come in slower than they play.
+        boolean slowNow = fast > 0 && need > fast && loading;
+        if (!slowNow || (slow > 0 && need <= slow)) {
+            mSlowSinceMs = 0;
+        } else if (mSlowSinceMs == 0) {
+            mSlowSinceMs = now;
+        }
+        boolean slowForLong = mSlowSinceMs > 0 && now - mSlowSinceMs >= SLOW_FOR_LONG_MS;
+        if (slowNow && now >= mGraceUntilMs
+                && (bufferedMs < URGENT_BUFFER_MS || ((bufferedMs < DOWN_BUFFER_MS || slowForLong) && draining(now, bufferedMs)))
                 && (mLastDownMs == 0 || now - mLastDownMs >= DOWN_AGAIN_MS)) {
             mUpStreak = 0;
             // With a comfortable amount loaded a short dip counts half; with little, only what the network does right now
@@ -417,13 +434,28 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         // 4. The network carries a clearly better version: up
         Format better = safe > 0 && !heavyInFlight ? CarAutoQuality.bestWithin((long) (safe * UP_SHARE / rate)) : null;
         boolean fits = better != null && CarAutoQuality.isBetter(better, cur) && better.bitrate >= cur.bitrate * 1.15f;
+        boolean thin = fits && meter.getSlowActiveMs() < SOLID_ESTIMATE_MS;
+        if (thin) {
+            // The speed is only known from a few short bursts (small pieces now and then into a full buffer): one step.
+            // Loading the better pieces is steady downloading - the next step then goes by a solid measurement.
+            Format next = CarAutoQuality.nextAbove(cur);
+            if (next != null && CarAutoQuality.isBetter(better, next)) {
+                better = next;
+                fits = better.bitrate >= cur.bitrate * 1.15f;
+            }
+        }
         if (!fits) {
             mUpStreak = 0;
         } else {
             mUpStreak++;
             long needBetter = (long) (CarAutoQuality.need(better) * rate);
             long minBuffer = safe * 0.4f >= needBetter ? UP_MIN_BUFFER_FAST_MS : UP_MIN_BUFFER_MS;
-            boolean settled = now >= mGraceUntilMs
+            // One step at a time: the next one waits until the last one is on screen (or long enough). Steps taken
+            // faster than that only load pieces that are replaced again before they are ever shown.
+            // (After a careful single step the next one may follow as soon as the speed is known for sure.)
+            boolean lastUpShown = mLastUpMs == 0 || now - mLastUpMs >= UP_SHOWN_WAIT_MS || (mLastUpThin && !thin)
+                    || CarAutoQuality.sameVersion(mShownFormat, cur);
+            boolean settled = now >= mGraceUntilMs && lastUpShown
                     && (mLastUpMs == 0 || now - mLastUpMs >= UP_AFTER_UP_MS)
                     && (mLastDownMs == 0 || now - mLastDownMs >= UP_AFTER_DOWN_MS * mPenalty)
                     && (mLastStallMs <= 0 || now - mLastStallMs >= UP_AFTER_STALL_MS);
@@ -435,6 +467,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                             mbps(safe), bufferedMs / 1000, CarAutoQuality.describeFormat(cur), CarAutoQuality.describeFormat(better),
                             keepMs / 1000));
                     mLastUpMs = now;
+                    mLastUpThin = thin;
                     mUpStreak = 0;
                     grace();
                 } else if (mLastRestartMs == 0 || now - mLastRestartMs >= 60_000) {
@@ -658,6 +691,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mPenalty = 1;
             mGoodSoundSinceMs = 0;
             mLastSoundChangeMs = 0;
+            mSlowSinceMs = 0;
             mSaidNoData = false;
             clearHistory();
         }
