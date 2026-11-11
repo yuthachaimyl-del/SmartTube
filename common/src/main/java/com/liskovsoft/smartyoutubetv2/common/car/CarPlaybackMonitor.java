@@ -63,6 +63,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long UP_MIN_BUFFER_FAST_MS = 5_000; // (this much when the network carries the better one twice over)
     private static final int UP_STREAK = 3;                 // the better version must fit this many seconds in a row
     private static final long UP_AFTER_UP_MS = 6_000;
+    private static final long ROOMY_BUFFER_MS = 40_000;     // this much loaded ahead: room for a hopeful step up
     private static final long SOLID_ESTIMATE_MS = 2_500;    // download time behind a speed that can be trusted for a big step
     private static final long UP_SHOWN_WAIT_MS = 30_000;    // (at most this long for the last step up to get on screen)
     private static final long SLOW_FOR_LONG_MS = 15_000;    // too slow for this long: down even with a lot loaded ahead
@@ -483,6 +484,21 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                 fits = better.bitrate >= cur.bitrate * 1.15f;
             }
         }
+        boolean hopeful = false;
+        if (!fits && !live && !heavyInFlight && bufferedMs >= ROOMY_BUFFER_MS && slow > 0 && fast > slow) {
+            // A lot is loaded ahead and the last seconds of downloading were clearly faster than the stretch before: the
+            // network may have got better (with a full buffer only a small piece is loaded now and then, so the longer
+            // view lags far behind). One step up, far ahead - half of what's loaded stays: loading those pieces shows what
+            // the network really carries, and little is lost if it doesn't.
+            Format next = CarAutoQuality.nextAbove(cur);
+            if (next != null && next.bitrate >= cur.bitrate * 1.15f
+                    && CarAutoQuality.need(next) * rate <= (fast + slow) / 2 * UP_SHARE) {
+                better = next;
+                fits = true;
+                hopeful = true;
+                thin = true;
+            }
+        }
         if (!fits) {
             mUpStreak = 0;
         } else {
@@ -505,10 +521,13 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             if (mUpStreak >= UP_STREAK && settled && (live || bufferedMs >= minBuffer)) {
                 // Keep enough of what's loaded to fetch the first better piece twice over; the rest is fetched again
                 long keepMs = Math.max(4_000, Math.min(15_000, (long) (2 * 7_000 * (needBetter / (double) safe)) + 2_000));
+                if (hopeful) {
+                    keepMs = Math.max(keepMs, bufferedMs / 2);
+                }
                 if (!live && CarAutoQuality.switchTo(better, keepMs * 1_000)) {
-                    CarPerf.log(String.format(Locale.US, "network %s, %d s loaded ahead: up from %s to %s (the next %d s stay as loaded)",
-                            mbps(safe), bufferedMs / 1000, CarAutoQuality.describeFormat(cur), CarAutoQuality.describeFormat(better),
-                            keepMs / 1000));
+                    CarPerf.log(String.format(Locale.US, "network %s%s, %d s loaded ahead: up from %s to %s (the next %d s stay as loaded)",
+                            mbps(safe), hopeful ? " (" + mbps(fast) + " just now)" : "", bufferedMs / 1000,
+                            CarAutoQuality.describeFormat(cur), CarAutoQuality.describeFormat(better), keepMs / 1000));
                     mLastUpMs = now;
                     mLastUpThin = thin;
                     mUpStreak = 0;
