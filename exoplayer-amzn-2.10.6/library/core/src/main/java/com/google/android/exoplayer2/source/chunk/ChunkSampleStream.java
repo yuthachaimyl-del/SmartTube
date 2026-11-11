@@ -698,6 +698,8 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
   // Internal methods
 
   private long lastReevaluatePositionUs;
+  private long lastCancelCheckMs;
+  private static final long CANCEL_CHECK_EVERY_MS = 250;
 
   /**
    * Car build: gives up the media chunk that is loading when the chunk source says so (auto picture went lower and
@@ -708,6 +710,11 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
         || !(loadingChunk instanceof BaseMediaChunk)) {
       return;
     }
+    long nowMs = android.os.SystemClock.elapsedRealtime();
+    if (nowMs - lastCancelCheckMs < CANCEL_CHECK_EVERY_MS) {
+      return; // (this is called on every pass of the playback loop)
+    }
+    lastCancelCheckMs = nowMs;
     int lastChunkIndex = mediaChunks.size() - 1;
     BaseMediaChunk last = mediaChunks.get(lastChunkIndex);
     if (last != loadingChunk || last.isLoadCompleted()) {
@@ -715,8 +722,7 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
     }
     if (lastChunkIndex > 0) {
       // Something is loaded before this chunk: only give it up while the renderer is still well before it - what it
-      // has read can't be taken back, and everything loaded would have to go with it. (When it's the only chunk -
-      // right after a start or a seek - nothing is lost either way: loading starts over from the same position.)
+      // has read can't be taken back, and everything loaded would have to go with it.
       if (primarySampleQueue.getReadIndex() + CANCEL_MIN_SAMPLES_AHEAD > last.getFirstSampleIndex(0)) {
         return;
       }
@@ -725,6 +731,10 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
           return;
         }
       }
+    } else if (haveReadFromMediaChunk(0)) {
+      // The only chunk, and the player is playing from it: giving it up would stop playback right now. What it has
+      // delivered plays on; should it run dry, the app restarts the stream at the lighter quality.
+      return;
     }
     if (((CancellableChunkSource) chunkSource).shouldCancelLoad(positionUs, last, readOnlyMediaChunks)) {
       canceledForSwitch = true;

@@ -25,7 +25,8 @@ import java.util.List;
  * A step up doesn't wait for the loaded data to play out either (up to a minute is loaded ahead): the pieces of the
  * old version beyond the next few seconds are dropped and loaded again in the new one, so the better picture shows
  * within seconds - still without a stop, as the next seconds are already there. A step down for the network keeps
- * everything that is loaded and can give up the piece that is still coming in (see {@link #select}).
+ * everything that is loaded; the piece of the old version that is still coming in is given up when it would take
+ * longer than playback can wait (see {@link #setAbandonBudget}).
  */
 public final class CarTrackSelection extends BaseTrackSelection implements PinnedTrackSelection {
     /** {@link TrackSelection.Definition#data} that asks the factory for this kind of selection. */
@@ -79,8 +80,8 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
     private volatile int mReason = C.SELECTION_REASON_INITIAL;
     /** How much loaded video of other versions stays ahead of playback; the rest is loaded again in the new version. */
     private volatile long mKeepUs = KEEP_ALL;
-    /** A piece of another version that is still loading is given up (asked once, see {@link #shouldAbandon}). */
-    private volatile boolean mAbandon;
+    /** How long the rest of a heavier piece that is still loading may take before it's given up (TIME_UNSET: any time). */
+    private volatile long mAbandonBudgetUs = C.TIME_UNSET;
 
     private CarTrackSelection(TrackGroup group, int[] tracks, Pick pick) {
         super(group, tracks);
@@ -95,19 +96,31 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
      *
      * @param keepUs How much already loaded video of other versions to keep ahead of playback ({@link #KEEP_ALL}: all
      *     of it); what lies beyond is dropped and loaded again in this version, so the change shows sooner.
-     * @param abandonLoading Give up a piece of another version that is loading right now (it comes in too slowly to
-     *     wait for), as long as the player isn't playing from it yet.
      */
-    boolean select(Format format, long keepUs, boolean abandonLoading) {
+    boolean select(Format format, long keepUs) {
         int index = indexOfFormat(format);
         if (index < 0) {
             return false;
         }
+        mAbandonBudgetUs = C.TIME_UNSET;
         mKeepUs = keepUs;
         mPending = index;
-        mAbandon = abandonLoading;
         mReason = C.SELECTION_REASON_ADAPTIVE;
         return true;
+    }
+
+    /**
+     * A lighter version was selected while a piece of a heavier one is still coming in: the rest of that piece may take
+     * this long at most; when it would take longer it is given up and loaded in the lighter version instead (as long as
+     * the player isn't playing from it yet, and it isn't nearly complete). {@code C.TIME_UNSET}: let it finish.
+     */
+    void setAbandonBudget(long budgetUs) {
+        mAbandonBudgetUs = budgetUs;
+    }
+
+    /** The version of the piece of video that was asked for last (loading now, or loaded). */
+    Format loading() {
+        return getFormat(mSelected);
     }
 
     /** Whether this version is one of the tracks that can be switched to. */
@@ -116,13 +129,20 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
     }
 
     @Override
-    public boolean shouldAbandon(Format loadingFormat) {
-        if (!mAbandon) {
-            return false;
+    public long getAbandonBudgetUs(Format loadingFormat) {
+        long budgetUs = mAbandonBudgetUs;
+        if (budgetUs == C.TIME_UNSET || loadingFormat == null) {
+            return C.TIME_UNSET;
         }
-        mAbandon = false; // asked once: for the piece that was loading when the step was decided
         Format wanted = getFormat(mPending);
-        return loadingFormat != null && loadingFormat != wanted && !loadingFormat.equals(wanted);
+        // Only a heavier piece is ever given up (a lighter one that is loading comes in faster than its replacement)
+        boolean heavier = loadingFormat != wanted && !loadingFormat.equals(wanted) && loadingFormat.bitrate > wanted.bitrate;
+        return heavier ? budgetUs : C.TIME_UNSET;
+    }
+
+    @Override
+    public Format getPendingFormat() {
+        return getFormat(mPending);
     }
 
     /** The version playing (or about to). */

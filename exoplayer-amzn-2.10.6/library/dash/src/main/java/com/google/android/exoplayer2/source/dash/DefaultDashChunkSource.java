@@ -31,6 +31,8 @@ import com.google.android.exoplayer2.extractor.mp4.FragmentedMp4Extractor;
 import com.google.android.exoplayer2.extractor.rawcc.RawCcExtractor;
 import com.google.android.exoplayer2.source.BehindLiveWindowException;
 import com.google.android.exoplayer2.source.chunk.BaseMediaChunkIterator;
+import com.google.android.exoplayer2.source.chunk.CancellableChunkSource;
+import com.google.android.exoplayer2.source.chunk.ChunkAbandonPolicy;
 import com.google.android.exoplayer2.source.chunk.Chunk;
 import com.google.android.exoplayer2.source.chunk.ChunkExtractorWrapper;
 import com.google.android.exoplayer2.source.chunk.ChunkHolder;
@@ -61,7 +63,7 @@ import java.util.List;
 /**
  * A default {@link DashChunkSource} implementation.
  */
-public class DefaultDashChunkSource implements DashChunkSource {
+public class DefaultDashChunkSource implements DashChunkSource, CancellableChunkSource {
 
   public static final class Factory implements DashChunkSource.Factory {
 
@@ -244,6 +246,37 @@ public class DefaultDashChunkSource implements DashChunkSource {
       return queue.size();
     }
     return trackSelection.evaluateQueueSize(playbackPositionUs, queue);
+  }
+
+  // Car build: auto picture went lower and the segment that is loading, in the old version, comes in too slowly. The
+  // next getNextChunk asks for the same segment again (the one after the queue's last chunk) in the new version.
+
+  @Override
+  public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue) {
+    if (fatalError != null || manifest.dynamic || !(trackSelection instanceof PinnedTrackSelection)) {
+      return false;
+    }
+    PinnedTrackSelection pinned = (PinnedTrackSelection) trackSelection;
+    long budgetUs = pinned.getAbandonBudgetUs(loadingChunk.trackFormat);
+    if (budgetUs == C.TIME_UNSET) {
+      return false;
+    }
+    long loaded = loadingChunk.bytesLoaded();
+    long length = loadingChunk.dataSpec.length;
+    long left = length != C.LENGTH_UNSET ? Math.max(0, length - loaded) : -1;
+    long durationUs = loadingChunk.startTimeUs != C.TIME_UNSET && loadingChunk.endTimeUs != C.TIME_UNSET
+        ? loadingChunk.endTimeUs - loadingChunk.startTimeUs : C.TIME_UNSET;
+    boolean cancel = ChunkAbandonPolicy.shouldAbandon(left, loadingChunk.trackFormat, loaded, budgetUs,
+        pinned.getPendingFormat(), durationUs);
+    if (cancel) {
+      com.google.android.exoplayer2.util.Log.e("DefaultDashChunkSource", "Giving up the chunk that is loading: " + loadingChunk.trackFormat.id + ", " + loaded + " bytes so far, "
+          + left + " to go, may take " + C.usToMs(budgetUs) + "ms");
+    }
+    return cancel;
+  }
+
+  @Override
+  public void onChunkLoadCanceled(Chunk chunk) {
   }
 
   @Override

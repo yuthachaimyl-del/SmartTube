@@ -21,18 +21,19 @@ import java.util.Locale;
 /**
  * Car build: "Auto" picture and sound.
  * <p>
- * Picture: one quality per video, chosen at the start - the best one this unit decodes in hardware without
- * dropping frames and the network carries. The other versions of the same codec ride along in the selection
- * ({@link CarTrackSelection}), so the picture can change in the middle of the stream without stopping: when the
- * network has had clear headroom for a while it goes back up at the next piece of video; when the decoder drops
- * frames it goes down the same way. (ExoPlayer's own moment-to-moment switching isn't used: it isn't aware of the
- * decoder's limits, and with YouTube's streaming method it used to re-download the start of the video.) When
- * playback keeps stalling or doesn't start while data is still arriving, {@link CarPlaybackMonitor} steps down
- * right away - the stream is rebuilt so the slow download is dropped - again if needed, and the lesson is kept, so
- * the next videos start at a level that plays smoothly.
+ * Picture: follows the network, like the YouTube app. A video starts with the best version this unit decodes in
+ * hardware without dropping frames and the network carries right now (measured live - see
+ * {@link com.google.android.exoplayer2.upstream.LiveBandwidthMeter}; a modest version when nothing is known yet). The
+ * other versions of the same codec ride along in the selection ({@link CarTrackSelection}), and
+ * {@link CarPlaybackMonitor} moves between them while the video plays, without stopping it: down before the loaded
+ * video runs out when the network gets slower (the piece that is still coming in too slowly is given up), up again
+ * within seconds once it carries more. Only when playback has already stalled is the stream restarted at the version
+ * that fits the measured speed - straight there, not one step at a time. The decoder's limits are respected all the
+ * way: a level that dropped frames isn't tried again for a week.
  * <p>
  * Sound: the best original stream as it is - the highest bit rate, no YouTube "stable volume" (DRC) version,
- * stereo, Opus first (48 kHz like the output: no resampling). Volume effects are off ({@link #isPureAudio}).
+ * stereo, Opus first (48 kHz like the output: no resampling). Volume effects are off ({@link #isPureAudio}). On a
+ * very weak signal a lighter version, so the picture and the sound both fit.
  */
 public final class CarAutoQuality {
     private static final String PREFS = "car_auto_quality";
@@ -41,26 +42,33 @@ public final class CarAutoQuality {
     private static final long ESTIMATE_FRESH_MS = 15 * 60_000; // an older measurement says little about where the car is now
     private static final String KEY_BAD = "too_heavy_";
     private static final String KEY_BAD_TIME = "too_heavy_time_";
+    private static final long REMEMBERED_MAX = 3_000_000; // a remembered speed starts a video at 720p at most
     private static final long REMEMBER_MS = 7L * 24 * 60 * 60_000; // try the heavier level again after a week
     private static final int MAX_SHORT_SIDE = 1080; // car screens: 1920x720 and 2400x896
-    private static final long FIRST_ESTIMATE = 3_000_000; // nothing measured yet: about 720p
-    private static final float BANDWIDTH_SHARE = 0.75f;
+    /** Nothing measured yet: start around 360p - it shows at once on any usable signal, and goes up within seconds. */
+    private static final long START_ESTIMATE = 1_200_000;
+    private static final float SHARE_LIVE = 0.8f;        // of a speed measured just now
+    private static final float SHARE_REMEMBERED = 0.7f;  // of a speed from a few minutes ago
     /** Below this budget the network is weak: lighter sound too, so the picture gets the bandwidth. */
     private static final long WEAK_BUDGET = 800_000;
+    private static final int DEFAULT_AUDIO_BPS = 130_000;
     private static volatile boolean sWeak;
     private static SharedPreferences sPrefs;
-    private static volatile boolean sMeterWarm;
-    private static volatile long sMeterWarmAtMs; // elapsedRealtime of the last real measurement
     /** The video pick of this selection pass decided {@link #sWeak} (false: auto picture is off, decide from the meter). */
     private static volatile boolean sWeakFromVideo;
-    @Nullable private static TrackGroupArray sVideoGroups; // the video the per-video limits belong to
-    private static int sVideoBitrateCap = Integer.MAX_VALUE;
-    /** The versions of the current video that pass every filter but the bit rate ones (same order as the groups). */
+    @Nullable private static TrackGroupArray sVideoGroups; // the video the candidates belong to
+    /** The versions of the current video that pass every filter but the network one (same order as the groups). */
     private static final List<Format> sCandidates = new ArrayList<>();
     @Nullable private static volatile Format sVideo;
     @Nullable private static volatile Format sAudio;
+    private static volatile boolean sLighterAudio; // a lighter sound version than the one playing exists
+    private static boolean sKeepWeak;              // the next pick leaves sWeak as it was set (restoreFullSound)
     /** Bumped when the next selection must rebuild the video stream (a stall: drop the slow download at once). */
     private static int sGeneration;
+    /** The version the next selection must take (a restart after a stall), the speed it was chosen for. */
+    @Nullable private static Format sRestartTarget;
+    private static long sRestartEstimate = -1;
+    private static boolean sRestartLightSound;
     /** The selection playing now, for a change of version in the middle of the stream. */
     private static volatile WeakReference<CarTrackSelection> sLive = new WeakReference<>(null);
 
@@ -81,12 +89,9 @@ public final class CarAutoQuality {
     // ---------------------------------------- picture ----------------------------------------
 
     @Nullable
-    public static synchronized Definition pickVideo(TrackGroupArray groups, int[][] supports, long meterEstimate) {
-        if (!groups.equals(sVideoGroups)) { // another video: forget the limits of the last one (a re-selection gets a new
-            // array with the same tracks)
-            sVideoGroups = groups;
-            sVideoBitrateCap = Integer.MAX_VALUE;
-        }
+    public static synchronized Definition pickVideo(TrackGroupArray groups, int[][] supports, long ignoredMeterEstimate) {
+        boolean sameVideo = groups.equals(sVideoGroups); // (a re-selection gets a new array with the same tracks)
+        sVideoGroups = groups;
 
         List<int[]> all = new ArrayList<>();
         for (int g = 0; g < groups.length && g < supports.length; g++) {
@@ -121,35 +126,75 @@ public final class CarAutoQuality {
         for (int[] gt : c) {
             sCandidates.add(format(groups, gt));
         }
-        final int cap = sVideoBitrateCap;
-        c = keep(c, groups, f -> f.bitrate <= 0 || f.bitrate <= cap);
 
-        // Nothing measured in this session yet (car just started, maybe somewhere with a weak signal): start no higher
-        // than the first-time level (~720p), whatever an earlier drive on a fast road measured. Once a video has
-        // played a while, the live measurement takes over (while it's recent: a process can sit in the background
-        // for hours).
-        boolean live = meterEstimate > 0 && isMeterWarm();
-        long estimate = live ? meterEstimate : Math.min(savedEstimate(), FIRST_ESTIMATE);
-        final long budget = cap != Integer.MAX_VALUE ? Math.min((long) (estimate * BANDWIDTH_SHARE), cap)
-                : (long) (estimate * BANDWIDTH_SHARE);
-        sWeak = budget < WEAK_BUDGET;
-        sWeakFromVideo = true;
-        List<int[]> fit = filter(c, groups, f -> f.bitrate <= 0 || f.bitrate <= budget);
+        // The network: measured live in this session, else what the last minutes of the last drive measured, else a
+        // modest start. (While a video plays the monitor follows the network; this is only where it starts.)
+        Format restart = sRestartTarget;
+        long restartEstimate = sRestartEstimate;
+        boolean lightSound = sRestartLightSound;
+        sRestartTarget = null;
+        sRestartEstimate = -1;
+        sRestartLightSound = false;
+
+        long live = com.google.android.exoplayer2.upstream.LiveBandwidthMeter.getInstance().getSafeEstimate();
+        long estimate;
+        float share;
+        String source;
+        if (restart != null && restartEstimate >= 0) {
+            estimate = restartEstimate;
+            share = SHARE_LIVE;
+            source = "";
+        } else if (live >= 0) {
+            estimate = live;
+            share = SHARE_LIVE;
+            source = "";
+        } else {
+            long saved = savedEstimate();
+            if (saved > 0) {
+                estimate = Math.min(saved, REMEMBERED_MAX);
+                share = SHARE_REMEMBERED;
+                source = " remembered";
+            } else {
+                estimate = START_ESTIMATE;
+                share = SHARE_LIVE;
+                source = " assumed";
+            }
+        }
+        final long budget = (long) (estimate * share);
 
         int[] best = null;
-        if (fit.isEmpty()) { // the network is slower than everything: the lightest one
+        String why = "";
+        CarTrackSelection playing = sLive.get();
+        if (restart != null) {
+            best = find(c, groups, restart); // the monitor's choice after a stall
+            why = " (restart)";
+        } else if (sameVideo && playing != null) {
+            best = find(c, groups, playing.current()); // selected again for another reason: stay where the monitor has it
+            why = " (unchanged)";
+        }
+        if (best == null) {
+            why = "";
+            for (int[] gt : c) {
+                Format f = format(groups, gt);
+                if (need(f) <= budget && (best == null || better(f, format(groups, best)))) {
+                    best = gt;
+                }
+            }
+        }
+        if (best == null) { // the network is slower than everything: the lightest one
             for (int[] gt : c) {
                 if (best == null || format(groups, gt).bitrate < format(groups, best).bitrate) {
                     best = gt;
                 }
             }
-        } else {
-            for (int[] gt : fit) {
-                if (best == null || better(format(groups, gt), format(groups, best))) {
-                    best = gt;
-                }
-            }
         }
+
+        if (sKeepWeak || (why.equals(" (unchanged)") && restart == null)) {
+            sKeepWeak = false; // selected again for another reason: the sound stays as it is too
+        } else {
+            sWeak = lightSound || budget < WEAK_BUDGET;
+        }
+        sWeakFromVideo = true;
 
         Format f = format(groups, best);
         sVideo = f;
@@ -168,10 +213,24 @@ public final class CarAutoQuality {
         for (int i = 0; i < trackArray.length; i++) {
             trackArray[i] = tracks.get(i);
         }
-        CarPerf.log(String.format(Locale.US, "auto picture: %s (network ~%.1f Mbps%s, %d versions, %d switchable)",
-                describe(f), estimate / 1_000_000f, live ? "" : " remembered", all.size(), trackArray.length));
+        CarPerf.log(String.format(Locale.US, "auto picture: %s%s (network ~%.1f Mbps%s, %d versions, %d switchable)",
+                describe(f), why, estimate / 1_000_000f, source, all.size(), trackArray.length));
         return new Definition(groups.get(best[0]), trackArray, C.SELECTION_REASON_INITIAL,
                 new CarTrackSelection.Pick(f, sGeneration));
+    }
+
+    @Nullable
+    private static int[] find(List<int[]> list, TrackGroupArray groups, @Nullable Format wanted) {
+        if (wanted == null) {
+            return null;
+        }
+        for (int[] gt : list) {
+            Format f = format(groups, gt);
+            if (f == wanted || f.equals(wanted)) {
+                return gt;
+            }
+        }
+        return null;
     }
 
     /** For the player UI: the one version playing, out of a pick's definition. */
@@ -190,22 +249,130 @@ public final class CarAutoQuality {
         sLive = new WeakReference<>(selection);
     }
 
-    /** The next selection rebuilds the video stream even if it picks a version in the current selection. */
-    public static synchronized void forcePick() {
-        sGeneration++;
+    // ---------------------------------------- following the network (for CarPlaybackMonitor) ----------------------------------------
+
+    /** The version auto picture is on (playing, or taking over at the next piece of video). */
+    @Nullable
+    public static Format current() {
+        return sVideo;
+    }
+
+    /** What the network has to carry for this version: its own bit rate and the sound's. */
+    public static long need(@Nullable Format video) {
+        if (video == null || video.bitrate <= 0) {
+            return 0;
+        }
+        Format audio = sAudio;
+        return video.bitrate + (audio != null && audio.bitrate > 0 ? audio.bitrate : DEFAULT_AUDIO_BPS);
     }
 
     /**
-     * Play this version from the next piece of video on, without stopping. False when it isn't in the selection
-     * playing now (another codec, or a video started before the selection existed): re-select then.
+     * The versions the picture can move between while this video plays: in the selection that is playing (same codec),
+     * and not known to make this unit's decoder drop frames (unless that leaves nothing).
      */
-    private static boolean switchTo(Format f) {
+    private static List<Format> ladder() {
         CarTrackSelection live = sLive.get();
-        if (live == null || !live.select(f, 10_000_000L, false)) {
+        List<Format> usable = new ArrayList<>();
+        List<Format> any = new ArrayList<>();
+        for (Format f : sCandidates) {
+            if (f.bitrate <= 0 || (live != null && !live.has(f))) {
+                continue;
+            }
+            any.add(f);
+            if (!isTooHeavy(f)) {
+                usable.add(f);
+            }
+        }
+        return usable.isEmpty() ? any : usable;
+    }
+
+    /** The best version the network carries within this budget (bits per second); null when even the lightest doesn't fit. */
+    @Nullable
+    public static synchronized Format bestWithin(long budget) {
+        Format best = null;
+        for (Format f : ladder()) {
+            if (need(f) <= budget && (best == null || better(f, best))) {
+                best = f;
+            }
+        }
+        return best;
+    }
+
+    /** The lightest version there is to move to. */
+    @Nullable
+    public static synchronized Format lightest() {
+        Format best = null;
+        for (Format f : ladder()) {
+            if (best == null || f.bitrate < best.bitrate) {
+                best = f;
+            }
+        }
+        return best;
+    }
+
+    /** {@code a} is the better picture (see {@link #better}); a null {@code b} is worse than anything. */
+    public static boolean isBetter(@Nullable Format a, @Nullable Format b) {
+        return a != null && (b == null || (!a.equals(b) && better(a, b)));
+    }
+
+    /** {@code a} is clearly lighter on the network than {@code b} (a version that saves less than 15% is no step down). */
+    public static boolean isLighter(@Nullable Format a, @Nullable Format b) {
+        return a != null && b != null && a.bitrate > 0 && a.bitrate <= b.bitrate * 0.85f;
+    }
+
+    /**
+     * Play this version from the next piece of video on, without stopping (see {@link CarTrackSelection#select}).
+     * False when it isn't in the selection playing now (another codec, a live stream, a video started before the
+     * selection existed): restart the stream then ({@link #restartAt}).
+     */
+    public static synchronized boolean switchTo(Format f, long keepUs) {
+        CarTrackSelection live = sLive.get();
+        if (live == null || !live.select(f, keepUs)) {
             return false;
         }
         sVideo = f;
         return true;
+    }
+
+    /**
+     * The version of the piece of video that was asked for last. After a {@link #switchTo} it's still the old one
+     * until the piece that is loading is complete (or given up).
+     */
+    @Nullable
+    public static Format loading() {
+        CarTrackSelection live = sLive.get();
+        return live != null ? live.loading() : sVideo;
+    }
+
+    /**
+     * A lighter version is selected and a piece of the heavier one is still coming in: its rest may take this long at
+     * most (microseconds); longer, and it's given up and loaded in the lighter version (see
+     * {@link CarTrackSelection#setAbandonBudget}).
+     */
+    public static void setAbandonBudget(long budgetUs) {
+        CarTrackSelection live = sLive.get();
+        if (live != null) {
+            live.setAbandonBudget(budgetUs);
+        }
+    }
+
+    /**
+     * The next selection takes this version and builds the video stream anew (playback has stalled: the slow download is
+     * dropped at once). Re-select after this.
+     *
+     * @param estimate The network speed it was chosen for (bits per second, -1 unknown).
+     * @param lightSound Take the light sound version too (even the lightest picture doesn't fit otherwise).
+     */
+    public static synchronized void restartAt(Format f, long estimate, boolean lightSound) {
+        sRestartTarget = f;
+        sRestartEstimate = estimate;
+        sRestartLightSound = lightSound;
+        sGeneration++;
+    }
+
+    /** The sound playing isn't the light version, and there is one. */
+    public static boolean hasLighterSound() {
+        return sLighterAudio && !sWeak;
     }
 
     /** Higher resolution, then higher frame rate, then the codec that looks best per bit. */
@@ -230,7 +397,7 @@ public final class CarAutoQuality {
 
     /**
      * Frames dropped at this level: don't use it (this codec, this much picture per second) for a week. Returns true
-     * when a lighter version took over without a stop; false when the selection must be redone.
+     * when a lighter version takes over without a stop; false when there's nothing lighter to go to.
      */
     public static synchronized boolean onFramesDropping(@Nullable Format f) {
         if (f == null || sPrefs == null) {
@@ -238,145 +405,38 @@ public final class CarAutoQuality {
         }
         String family = family(f);
         float load = load(f);
+        Format best = null;
+        for (Format c : ladder()) {
+            if (load(c) < load && !isTooHeavy(c) && (best == null || better(c, best))) {
+                best = c;
+            }
+        }
+        if (best == null) { // nothing lighter for the decoder: stay (marking the lightest level too heavy helps nobody)
+            CarPerf.log("frames dropping at " + describe(f) + ", but there's no lighter version: staying");
+            return false;
+        }
         float old = sPrefs.getFloat(KEY_BAD + family, Float.MAX_VALUE);
         sPrefs.edit()
                 .putFloat(KEY_BAD + family, Math.min(old, load))
                 .putLong(KEY_BAD_TIME + family, System.currentTimeMillis())
                 .apply();
         CarPerf.log("frames dropping at " + describe(f) + ": use lighter " + family + " from now on");
-        // The data arrives fine - change at the next piece of video rather than rebuild the stream
-        Format best = null;
-        for (Format c : sCandidates) {
-            if (c.bitrate > 0 && c.bitrate <= sVideoBitrateCap && !isTooHeavy(c) && load(c) < load
-                    && (best == null || better(c, best))) {
-                best = c;
-            }
-        }
-        if (best == null) { // every lighter level dropped frames before too: the lightest one that is lighter than this
-            for (Format c : sCandidates) {
-                if (c.bitrate > 0 && load(c) < load && (best == null || load(c) < load(best))) {
-                    best = c;
-                }
-            }
-        }
-        if (best != null && switchTo(best)) {
+        // The data arrives fine - change at the next piece of video; the heavy pieces already loaded beyond the next
+        // seconds are loaded again in the lighter version
+        if (switchTo(best, 10_000_000L)) {
             CarPerf.log("lighter picture from the next piece on: " + describe(best));
             return true;
         }
         return false;
     }
 
-    /**
-     * Playback keeps stalling (or never starts) although data is arriving: below this bit rate for the rest of the
-     * video - lower still when the network measured less - and start lower next time. Returns true when the picture
-     * will change (re-select then); false when it's already the lightest version.
-     */
-    public static synchronized boolean onStalls(@Nullable Format f, long meterEstimate) {
-        if (f == null) {
-            f = sVideo;
-        }
-        if (f == null || f.bitrate <= 0) {
-            return false;
-        }
-        long oneDown = (long) (f.bitrate * 0.85f); // a version that saves less than 15% is no step down (144p VP9 -> 144p AVC)
-        long cap = oneDown;
-        if (meterEstimate > 0) {
-            cap = Math.min(cap, (long) (meterEstimate * BANDWIDTH_SHARE));
-        }
-        if (!hasLighter(cap)) {
-            // nothing fits the measured speed; at least one step down, if there is one
-            cap = oneDown;
-        }
-        if (!hasLighter(cap)) {
-            boolean changed = !sWeak;
-            sWeak = true;
-            sVideoBitrateCap = f.bitrate; // stay here
-            saveEstimate((long) (f.bitrate / BANDWIDTH_SHARE));
-            if (changed) {
-                CarPerf.log("stalls at " + describe(f) + ": already the lightest version, lighter sound");
-            }
-            return changed; // one re-selection so the light sound applies; the picture stays the same stream
-        }
-        sVideoBitrateCap = (int) Math.max(cap, 1);
-        saveEstimate((long) (Math.max(cap, 1) / BANDWIDTH_SHARE));
-        CarPerf.log(String.format(Locale.US, "stalls at %s: lower for this video (under %.2f Mbps)",
-                describe(f), sVideoBitrateCap / 1_000_000f));
-        return true;
-    }
-
-    /** A lighter version than the one playing exists (so a step down would change something). */
-    public static synchronized boolean canStepDown() {
-        Format f = sVideo;
-        return f != null && f.bitrate > 0 && hasLighter((long) (f.bitrate * 0.85f));
-    }
-
-    private static long sHeadroomLogMs;
-    public static final int UP_NONE = 0;
-    public static final int UP_SWITCHED = 1;  // the better version plays from the next piece of video on
-    public static final int UP_RESELECT = 2;  // re-select (the stream is rebuilt: a short re-buffer)
-
-    /**
-     * The network has had clear headroom for a while: a clearly better version (at least 1.25x the bit rate) within
-     * a safe share of the measured speed takes over at the next piece of video - playback doesn't stop. Only when
-     * that version isn't in the selection playing (another codec) is the selection redone, and then only for a
-     * small picture (480p or less) and a big gain (1.5x): that change costs a re-buffer.
-     */
-    public static synchronized int liftCapForHeadroom(long meterEstimate) {
-        Format now = sVideo;
-        if (now == null || now.bitrate <= 0 || meterEstimate <= 0 || !isMeterWarm()) {
-            return UP_NONE;
-        }
-        long budget = (long) (meterEstimate * 0.6f); // more margin than a fresh pick: a step back down costs a stop
-        Format best = null;
-        for (Format f : sCandidates) { // (already past the decoder filters, leniently - like the pick)
-            if (f.bitrate > 0 && f.bitrate <= budget && (best == null || better(f, best))) {
-                best = f;
-            }
-        }
-        if (best == null || best.bitrate < now.bitrate * 1.25f || !better(best, now)) {
-            long t = android.os.SystemClock.elapsedRealtime();
-            if (t - sHeadroomLogMs > 60_000) {
-                sHeadroomLogMs = t;
-                CarPerf.log(String.format(Locale.US, "headroom check: at %s, network ~%.1f Mbps, best within %.1f Mbps: %s (%d versions)",
-                        describe(now), meterEstimate / 1_000_000f, budget / 1_000_000f, best != null ? describe(best) : "none", sCandidates.size()));
-            }
-            return UP_NONE;
-        }
-        if (switchTo(best)) {
-            sVideoBitrateCap = best.bitrate; // exactly this one (the next video starts from the live measurement anyway)
-            CarPerf.log(String.format(Locale.US, "network ~%.1f Mbps for a while: up from %s to %s from the next piece on",
-                    meterEstimate / 1_000_000f, describe(now), describe(best)));
-            return UP_SWITCHED;
-        }
-        if (shortSide(now) > 480 || best.bitrate < now.bitrate * 1.5f) {
-            return UP_NONE;
-        }
-        sVideoBitrateCap = best.bitrate;
-        CarPerf.log(String.format(Locale.US, "network ~%.1f Mbps for a while: back up from %s to %s",
-                meterEstimate / 1_000_000f, describe(now), describe(best)));
-        return UP_RESELECT;
-    }
-
-    /** The video picked for this video (before its first picture appears). */
-    @Nullable
-    public static Format pickedVideo() {
-        return sVideo;
-    }
-
-    /** A new video opens: its own limits start clean (a replay of a video that hit a tunnel shouldn't inherit them). */
+    /** A new video opens: nothing carries over from the last one's selection. */
     public static synchronized void onNewVideo() {
         sVideoGroups = null;
-        sVideoBitrateCap = Integer.MAX_VALUE;
-    }
-
-    /** Among the versions the pick considers for this video (same decoder/size/frame-rate filters). */
-    private static boolean hasLighter(long cap) {
-        for (Format f : sCandidates) {
-            if (f.bitrate > 0 && f.bitrate <= cap) {
-                return true;
-            }
-        }
-        return false;
+        sRestartTarget = null;
+        sRestartEstimate = -1;
+        sRestartLightSound = false;
+        sLive = new WeakReference<>(null);
     }
 
     /** Auto picked again by the user: start over (try the best levels again). */
@@ -390,7 +450,6 @@ public final class CarAutoQuality {
             }
             editor.apply();
         }
-        sVideoBitrateCap = Integer.MAX_VALUE;
     }
 
     private static boolean isTooHeavy(Format f) {
@@ -405,31 +464,19 @@ public final class CarAutoQuality {
         return load(f) >= sPrefs.getFloat(KEY_BAD + family, Float.MAX_VALUE) * 0.95f;
     }
 
-    // ---------------------------------------- network ----------------------------------------
+    // ---------------------------------------- network memory ----------------------------------------
 
-    /** The bandwidth meter has real measurements of this session (a video played a while). */
-    public static void onMeterWarm(long estimate) {
-        sMeterWarm = true;
-        sMeterWarmAtMs = android.os.SystemClock.elapsedRealtime();
-        if (estimate > 0) {
-            saveEstimate(estimate);
-        }
-    }
-
-    /** Measured recently - not a number left from a drive hours ago while the app sat in the background. */
-    private static boolean isMeterWarm() {
-        return sMeterWarm && android.os.SystemClock.elapsedRealtime() - sMeterWarmAtMs < ESTIMATE_FRESH_MS;
-    }
-
+    /** The speed measured a few minutes ago at most (a restart of the app on the same drive); -1 when there's none. */
     private static long savedEstimate() {
         long saved = sPrefs != null ? sPrefs.getLong(KEY_ESTIMATE, 0) : 0;
         long time = sPrefs != null ? sPrefs.getLong(KEY_ESTIMATE_TIME, 0) : 0;
         long age = System.currentTimeMillis() - time; // negative: the clock was set back (car units boot with a stale clock)
         boolean fresh = age >= 0 && age < ESTIMATE_FRESH_MS;
-        return saved > 0 && fresh ? saved : FIRST_ESTIMATE;
+        return saved > 0 && fresh ? saved : -1;
     }
 
-    private static void saveEstimate(long estimate) {
+    /** Remember the measured speed for the next start of the app. */
+    public static void saveEstimate(long estimate) {
         if (sPrefs != null && estimate > 0) {
             sPrefs.edit().putLong(KEY_ESTIMATE, estimate).putLong(KEY_ESTIMATE_TIME, System.currentTimeMillis()).apply();
         }
@@ -465,14 +512,12 @@ public final class CarAutoQuality {
 
         int[] best = null;
         // Auto picture off (a fixed quality): the video pick didn't run this pass, so judge the network here
-        final boolean weak = sWeakFromVideo ? sWeak
-                : meterEstimate > 0 && isMeterWarm() && meterEstimate * BANDWIDTH_SHARE < WEAK_BUDGET;
+        long live = com.google.android.exoplayer2.upstream.LiveBandwidthMeter.getInstance().getSafeEstimate();
+        final boolean weak = sWeakFromVideo ? sWeak : live >= 0 && live * SHARE_LIVE < WEAK_BUDGET;
         sWeakFromVideo = false;
-        if (weak) { // weak signal: a light version (~50-70 kbps sounds fine in a moving car), the picture needs the bandwidth
-            List<int[]> light = filter(c, groups, f -> f.bitrate > 0 && f.bitrate <= 80_000);
-            if (!light.isEmpty()) {
-                c = light;
-            }
+        List<int[]> light = filter(c, groups, f -> f.bitrate > 0 && f.bitrate <= LIGHT_AUDIO_BPS);
+        if (weak && !light.isEmpty()) { // weak signal: a light version (~50-70 kbps sounds fine in a moving car), the
+            c = light;                  // picture needs the bandwidth
         }
         for (int[] gt : c) {
             if (best == null || audioScore(format(groups, gt)) > audioScore(format(groups, best))) {
@@ -482,8 +527,35 @@ public final class CarAutoQuality {
 
         Format f = format(groups, best);
         sAudio = f;
+        sLighterAudio = !light.isEmpty() && f.bitrate > LIGHT_AUDIO_BPS;
         CarPerf.log("auto sound: " + describeAudio(f) + (weak ? " (weak signal)" : "") + " (" + all.size() + " versions)");
         return new Definition(groups.get(best[0]), best[1]);
+    }
+
+    private static final int LIGHT_AUDIO_BPS = 80_000;
+
+    /** The light sound version is playing (picked on a weak signal). */
+    public static boolean isLightSound() {
+        Format f = sAudio;
+        return sWeak && f != null && f.bitrate > 0 && f.bitrate <= LIGHT_AUDIO_BPS;
+    }
+
+    /**
+     * The network is fine again: the next selection takes the full sound version back (re-select after this; the picture
+     * stays as it is).
+     */
+    public static synchronized void restoreFullSound() {
+        sWeak = false;
+        sKeepWeak = true;
+    }
+
+    /**
+     * The network doesn't carry even the lightest picture together with the full sound: the next selection takes the
+     * light sound version (re-select after this; the picture stays as it is).
+     */
+    public static synchronized void useLightSound() {
+        sWeak = true;
+        sKeepWeak = true;
     }
 
     /** Bit rate, with Opus a bit ahead: it's 48 kHz like the output, so nothing gets resampled. */
@@ -496,8 +568,20 @@ public final class CarAutoQuality {
         return f.isDrc || (f.id != null && f.id.toLowerCase(Locale.ROOT).endsWith("drc"));
     }
 
+    /**
+     * Surround versions. The channel count isn't in YouTube's format list as the player gets it, so they're known by
+     * their format numbers too: without that the 5.1 HE-AAC version (192 kbps) won over stereo Opus 160 on videos
+     * that have surround sound, and was mixed down to stereo by the decoder.
+     */
     private static boolean isMultichannel(Format f) {
-        return f.channelCount > 2 || MimeTypes.AUDIO_AC3.equals(f.sampleMimeType)
+        String id = f.id != null ? f.id : "";
+        int dash = id.indexOf('-');
+        if (dash > 0) {
+            id = id.substring(0, dash);
+        }
+        boolean surroundItag = id.equals("256") || id.equals("258") || id.equals("325") || id.equals("327")
+                || id.equals("328") || id.equals("338") || id.equals("380");
+        return surroundItag || f.channelCount > 2 || MimeTypes.AUDIO_AC3.equals(f.sampleMimeType)
                 || MimeTypes.AUDIO_E_AC3.equals(f.sampleMimeType) || f.bitrate > 300_000;
     }
 

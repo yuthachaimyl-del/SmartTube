@@ -14,6 +14,8 @@ import com.google.android.exoplayer2.extractor.Extractor;
 import com.google.android.exoplayer2.extractor.TrackOutput;
 import com.google.android.exoplayer2.extractor.rawcc.RawCcExtractor;
 import com.google.android.exoplayer2.source.BehindLiveWindowException;
+import com.google.android.exoplayer2.source.chunk.CancellableChunkSource;
+import com.google.android.exoplayer2.source.chunk.ChunkAbandonPolicy;
 import com.google.android.exoplayer2.source.chunk.Chunk;
 import com.google.android.exoplayer2.source.chunk.ChunkExtractorWrapper;
 import com.google.android.exoplayer2.source.chunk.ChunkHolder;
@@ -57,7 +59,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class DefaultSabrChunkSource implements SabrChunkSource {
+public class DefaultSabrChunkSource implements SabrChunkSource, CancellableChunkSource {
     public static final class Factory implements SabrChunkSource.Factory {
 
         private final DataSource.Factory dataSourceFactory;
@@ -131,6 +133,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     private final Map<String, String> sabrHeaders;
     private int nexChunkIdx = -1;
     private long pendingSeekTimeUs = C.TIME_UNSET;
+    private boolean pendingSeekMidStream; // Car build: that seek is a format change in the middle of the stream
     /** Car build: the media chunk that also carries the init segment (see canLoadInitWithMedia) */
     @Nullable private Chunk initWithMediaChunk;
     /** Car build: the format the SABR requests ask for (see {@link #maybeSwitchFormat}) */
@@ -139,6 +142,16 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
     /** Car build: the next media request starts the new format where the loaded data ends */
     private boolean switchPending;
     private long switchSeekTimeUs = C.TIME_UNSET;
+    /**
+     * Car build: the media chunks made so far (newest last) and the stream time each one's data starts at. When the
+     * queue's last chunk isn't the newest one made, the chunks after it were removed (given up while loading, or
+     * dropped to be loaded again in a better version): the loaded data then ends where the first removed one began.
+     */
+    private final ArrayList<Chunk> madeChunks = new ArrayList<>();
+    private final ArrayList<Long> madeChunkStartsUs = new ArrayList<>();
+    private static final int MADE_CHUNKS_KEPT = 128;
+    /** A request for another format than the one before it asks for a time just inside the piece wanted. */
+    private static final long SWITCH_INTO_SEGMENT_US = 50_000;
     private static volatile boolean sInitWithMediaBroken;
 
     /**
@@ -249,25 +262,94 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
      * first request always began at 0.
      */
     private void maybeSwitchFormat(@Nullable MediaChunk previous, long loadPositionUs) {
+        // Where does the loaded data end? Chunks removed from the end of the queue leave it at the first removed one's start
+        boolean cut = false;
+        long dataEndUs = C.TIME_UNSET;
+        if (previous == null) {
+            madeChunks.clear();
+            madeChunkStartsUs.clear();
+        } else {
+            int index = madeChunks.lastIndexOf(previous);
+            if (index >= 0 && index < madeChunks.size() - 1) {
+                cut = true;
+                dataEndUs = madeChunkStartsUs.get(index + 1);
+                while (madeChunks.size() > index + 1) {
+                    madeChunks.remove(madeChunks.size() - 1);
+                    madeChunkStartsUs.remove(madeChunkStartsUs.size() - 1);
+                }
+            }
+        }
+
         Format selected = trackSelection.getSelectedFormat();
-        if (selected == null || selected == currentFormat || (currentFormat != null && selected.equals(currentFormat))) {
+        boolean changed = selected != null && selected != currentFormat && !selected.equals(currentFormat)
+                && !manifest.dynamic; // live: untested here, keep the format the stream started with
+        if (!changed && !cut) {
             return;
         }
-        if (manifest.dynamic) { // live: untested here, keep the format the stream started with
-            return;
+
+        if (dataEndUs == C.TIME_UNSET) {
+            // Right after the newest chunk: where its format's last piece ended (a chunk's own end time is only a guess -
+            // one response can bring two pieces)
+            FormatId oldId = formatSelector.getSelectedFormatId();
+            int oldItag = oldId != null ? oldId.getItag() : -1;
+            dataEndUs = sabrStream != null && sabrStream.hasSegmentStartTime(oldItag)
+                    ? sabrStream.getSegmentStartTimeMs(oldItag) * 1_000L : loadPositionUs;
         }
-        Log.e(TAG, "Switching format: track=" + trackType + ", from " + describe(currentFormat) + " to " + describe(selected)
-                + " at " + (previous != null ? C.usToMs(loadPositionUs) + "ms" : "the start"));
-        currentFormat = selected;
-        activeIndex = trackSelection.getSelectedIndex();
-        formatSelector = createFormatSelector(trackType, trackSelection);
-        if (sabrStream != null) {
-            sabrStream.setFormatSelector(formatSelector);
+
+        if (changed) {
+            Log.e(TAG, "Switching format: track=" + trackType + ", from " + describe(currentFormat) + " to " + describe(selected)
+                    + " at " + (previous != null ? C.usToMs(dataEndUs) + "ms" : "the start") + (cut ? " (after removed chunks)" : ""));
+            currentFormat = selected;
+            activeIndex = trackSelection.getSelectedIndex();
+            formatSelector = createFormatSelector(trackType, trackSelection);
+            if (sabrStream != null) {
+                sabrStream.setFormatSelector(formatSelector);
+            }
+        } else {
+            Log.e(TAG, "Continuing after removed chunks: track=" + trackType + ", " + describe(currentFormat)
+                    + " at " + C.usToMs(dataEndUs) + "ms");
         }
         if (previous != null) {
             switchPending = true;
-            switchSeekTimeUs = loadPositionUs;
+            switchSeekTimeUs = dataEndUs;
         }
+    }
+
+    // CancellableChunkSource: auto picture went lower and the piece that is loading, in the old version, comes in too slowly
+
+    @Override
+    public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue) {
+        if (fatalError != null || manifest.dynamic || sabrStream == null || !(trackSelection instanceof PinnedTrackSelection)) {
+            return false;
+        }
+        PinnedTrackSelection pinned = (PinnedTrackSelection) trackSelection;
+        long budgetUs = pinned.getAbandonBudgetUs(loadingChunk.trackFormat);
+        if (budgetUs == C.TIME_UNSET) {
+            return false;
+        }
+        FormatId formatId = formatSelector.getSelectedFormatId(); // (the format of the request that is running)
+        long loaded = loadingChunk.bytesLoaded();
+        long left = sabrStream.getLoadingBytesLeft(formatId != null ? formatId.getItag() : -1);
+        long durationUs = C.TIME_UNSET;
+        if (left >= 0) {
+            durationUs = sabrStream.getLoadingDurationMs() * 1_000L;
+        } else if (loaded > 0) {
+            // The response has begun, but no piece of video is coming in at this moment (before its first one, between
+            // two, or it is complete): decide when the next piece's size is known
+            return false;
+        }
+        boolean cancel = ChunkAbandonPolicy.shouldAbandon(left, loadingChunk.trackFormat, loaded, budgetUs,
+                pinned.getPendingFormat(), durationUs);
+        if (cancel) {
+            Log.e(TAG, "Giving up the chunk that is loading: track=" + trackType + ", " + describe(loadingChunk.trackFormat)
+                    + ", " + loaded + " bytes so far, " + left + " to go, may take " + C.usToMs(budgetUs) + "ms");
+        }
+        return cancel;
+    }
+
+    @Override
+    public void onChunkLoadCanceled(Chunk chunk) {
+        // Nothing to do here: the next getNextChunk sees that the queue ends before this chunk (maybeSwitchFormat)
     }
 
     /** The format being loaded: the selection's, unless a switch was refused (live). */
@@ -484,11 +566,14 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         //    }
         //}
 
-        long seekTimeUs = queue.isEmpty() || switchPending ? loadPositionUs : C.TIME_UNSET;
+        // Car build: a format change (or a continuation after removed chunks) asks from where the loaded data ends
+        boolean midStream = switchPending && !queue.isEmpty();
+        long seekTimeUs = midStream ? switchSeekTimeUs : queue.isEmpty() ? loadPositionUs : C.TIME_UNSET;
         switchPending = false;
         if (sabrStream != null) {
             if (seekTimeUs != C.TIME_UNSET) {
                 pendingSeekTimeUs = seekTimeUs;
+                pendingSeekMidStream = midStream;
             } else if (pendingSeekTimeUs != C.TIME_UNSET) {
                 FormatId formatId = formatSelector.getSelectedFormatId();
                 if (sabrStream.hasSegmentStartTime(formatId != null ? formatId.getItag() : -1)) {
@@ -499,6 +584,7 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                     // seek target the server would send segments from the start of the video.
                     Log.w(TAG, "Retrying the seek to " + C.usToMs(pendingSeekTimeUs) + "ms");
                     seekTimeUs = pendingSeekTimeUs;
+                    midStream = pendingSeekMidStream;
                 }
             }
         }
@@ -514,7 +600,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                         //segmentNum,
                         //maxSegmentCount,
                         seekTimeUs,
-                        withInit);
+                        withInit,
+                        midStream);
         if (withInit) {
             initWithMediaChunk = out.chunk;
         }
@@ -525,7 +612,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
      * loaded) of a regular video. Quality switches and live streams keep the separate init request.
      */
     private boolean canLoadInitWithMedia(List<? extends MediaChunk> queue) {
-        return !sInitWithMediaBroken && (queue.isEmpty() || switchPending) && sabrStream != null && !manifest.dynamic;
+        return !sInitWithMediaBroken && (queue.isEmpty() || switchPending || pendingSeekTimeUs != C.TIME_UNSET)
+                && sabrStream != null && !manifest.dynamic;
     }
 
     /** Car build: if the combined first request ever goes wrong, go back to separate init requests for good. */
@@ -747,7 +835,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
             long firstSegmentNum,
             //int maxSegmentCount,
             long seekTimeUs,
-            boolean withInit) {
+            boolean withInit,
+            boolean midStream) {
         Representation representation = representationHolder.representation;
         if (representationHolder.extractorWrapper == null) {
             DataSpec dataSpec = new DataSpec(
@@ -784,11 +873,17 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
         //long durationMs = sabrStream.getSegmentDurationMs(trackType);
         long startTimeMs = sabrStream.getSegmentStartTimeMs(iTag);
         long durationMs = sabrStream.getSegmentDurationMs(iTag);
-        boolean isSabrTimeSet = startTimeMs >= 0 && durationMs > 0;
+        // Car build: after a reset (a seek, a format change) the stream has no piece to go by: the times below would be
+        // 0..one piece for a format that was played before - nonsense in the middle of a video
+        boolean isSabrTimeSet = !isSeek && startTimeMs >= 0 && durationMs > 0;
 
         long startTimeUs = isSabrTimeSet ? startTimeMs * 1_000L : C.TIME_UNSET;
         long endTimeUs = isSabrTimeSet ? startTimeUs + (durationMs * 1_000L) : C.TIME_UNSET;
-        if (!isSabrTimeSet) {
+        if (midStream && isSeek) {
+            // A change in the middle of the stream starts exactly where the loaded data ends (the end is a safe minimum)
+            startTimeUs = seekTimeUs;
+            endTimeUs = seekTimeUs;
+        } else if (!isSabrTimeSet) {
             // Car build: the segment times aren't known yet (a format's first request, e.g. the one with the init
             // segment). The end must still be a real time: TIME_UNSET made ExoPlayer's buffered-duration math overflow
             // whenever the position wasn't 0 (resuming a video, a quality change mid-video), so it stopped loading
@@ -809,7 +904,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 //segmentUri.resolveUri(baseUrl),
                 DataSpec.HTTP_METHOD_POST,
                 //sabrStream.createVideoPlaybackAbrRequest(trackType, false).toByteArray(),
-                manifest.createVideoPlaybackAbrRequest(trackType, withInit, seekTimeUs).toByteArray(),
+                manifest.createVideoPlaybackAbrRequest(trackType, withInit,
+                        midStream && isSeek ? seekTimeUs + SWITCH_INTO_SEGMENT_US : seekTimeUs).toByteArray(),
                 0, 0, C.LENGTH_UNSET,
                 //segmentUri.start,
                 //segmentUri.start,
@@ -819,8 +915,9 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 sabrHeaders);
         long sampleOffsetUs = -representation.presentationTimeOffsetUs;
         Log.e(TAG, "Load media chunk" + (withInit ? " with init" : "") + ": track=" + trackType + ", rn=" + manifest.getSabrRequestNumber()
-                + ", startTimeMs=" + startTimeMs + ", backoffTimeMs=" + sabrStream.getBackoffTimeMs());
-        return new ContainerMediaChunk(
+                + ", itag=" + iTag + ", startTimeMs=" + (isSeek ? seekTimeUs / 1_000 : startTimeMs) + (isSeek ? " (seek)" : "")
+                + ", backoffTimeMs=" + sabrStream.getBackoffTimeMs());
+        ContainerMediaChunk chunk = new ContainerMediaChunk(
                 dataSource,
                 dataSpec,
                 trackFormat,
@@ -834,6 +931,13 @@ public class DefaultSabrChunkSource implements SabrChunkSource {
                 segmentCount,
                 sampleOffsetUs,
                 representationHolder.extractorWrapper);
+        madeChunks.add(chunk);
+        madeChunkStartsUs.add(isSeek ? seekTimeUs : startTimeMs * 1_000L);
+        if (madeChunks.size() > MADE_CHUNKS_KEPT) {
+            madeChunks.remove(0);
+            madeChunkStartsUs.remove(0);
+        }
+        return chunk;
 
         //if (representationHolder.extractorWrapper == null) {
         //    long endTimeUs = representationHolder.getSegmentEndTimeUs(firstSegmentNum);

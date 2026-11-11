@@ -228,6 +228,15 @@ public class SabrStream {
         return processor.getBackoffTimeMs();
     }
 
+    /** Car build: bytes still to come of the media segment that is coming in right now; -1 when none or unknown. */
+    public long getLoadingBytesLeft(int iTag) {
+        return processor.getLoadingBytesLeft(iTag);
+    }
+
+    public long getLoadingDurationMs() {
+        return processor.getLoadingDurationMs();
+    }
+
     public MediaHeader getInitializedFormat(int iTag) {
         return processor.getInitializedFormats().get(iTag);
     }

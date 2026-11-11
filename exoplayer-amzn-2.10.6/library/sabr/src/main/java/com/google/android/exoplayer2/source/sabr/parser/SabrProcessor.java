@@ -79,6 +79,11 @@ public class SabrProcessor {
     private final FormatSelector emptySelector;
     /** Car build: formats this track played earlier in the stream and switched away from (see setFormatSelector) */
     private final List<FormatId> retiredFormatIds = new ArrayList<>();
+    /** Car build: the media segment that is coming in right now (read from the playback thread, see getLoadingBytesLeft) */
+    private volatile int loadingItag = NO_VALUE;
+    private volatile long loadingLength = NO_VALUE;
+    private volatile long loadingReceived;
+    private volatile long loadingDurationMs;
 
     public SabrProcessor(
             @NonNull String videoPlaybackUstreamerConfig,
@@ -249,6 +254,13 @@ public class SabrProcessor {
 
         partialSegments.put(Utils.toLong(mediaHeader.getHeaderId()), segment);
 
+        if (!segment.discard && !isInitSegment) {
+            loadingReceived = 0;
+            loadingDurationMs = durationMs;
+            loadingLength = segment.contentLength;
+            loadingItag = mediaHeader.getItag();
+        }
+
         ProcessMediaHeaderResult result = new ProcessMediaHeaderResult();
 
         if (!segment.discard) {
@@ -286,6 +298,9 @@ public class SabrProcessor {
 
         int segmentStartBytes = segment.receivedDataLength;
         segment.receivedDataLength += contentLength;
+        if (!segment.discard && !segment.isInitSegment) {
+            loadingReceived = segment.receivedDataLength;
+        }
 
         ProcessMediaResult result = new ProcessMediaResult();
 
@@ -315,6 +330,10 @@ public class SabrProcessor {
         if (segment == null) {
             Log.e(TAG, "Header ID %s not found", headerId);
             throw new SabrStreamError(String.format("Header ID %s not found in partial segments", headerId));
+        }
+
+        if (!segment.discard && !segment.isInitSegment) {
+            loadingItag = NO_VALUE; // nothing is coming in until the next header
         }
 
         if (!segment.mediaHeader.getIsInitSeg()) {
@@ -737,6 +756,24 @@ public class SabrProcessor {
 
     public int getBackoffTimeMs() {
         return nextRequestPolicy != null ? nextRequestPolicy.getBackoffTimeMs() : 0;
+    }
+
+    /**
+     * Car build: how many bytes of the media segment that is coming in right now are still to come; -1 when none of
+     * this format is coming in (before the response's first segment, between two segments, after the last) or its
+     * size isn't known.
+     */
+    public long getLoadingBytesLeft(int iTag) {
+        long length = loadingLength;
+        if (iTag == NO_VALUE || loadingItag != iTag || length <= 0) {
+            return NO_VALUE;
+        }
+        return Math.max(0, length - loadingReceived);
+    }
+
+    /** Car build: the duration of the media segment that is coming in right now (see {@link #getLoadingBytesLeft}). */
+    public long getLoadingDurationMs() {
+        return loadingDurationMs;
     }
 
     //private List<FormatId> createSelectedFormatIds() {
