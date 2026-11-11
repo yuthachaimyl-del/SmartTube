@@ -45,6 +45,14 @@ public final class CarPerf {
         }
     }
 
+    /**
+     * Test hook (adb shell setprop log.tag.CarSabr DEBUG, then start the app): play through SABR whenever YouTube offers
+     * it, also when it offers DASH as well (the app takes DASH first then).
+     */
+    public static boolean isSabrTest() {
+        return Log.isLoggable("CarSabr", Log.DEBUG);
+    }
+
     public static void start(String what) {
         maybeUseTestClient();
         sAnyStart = true;

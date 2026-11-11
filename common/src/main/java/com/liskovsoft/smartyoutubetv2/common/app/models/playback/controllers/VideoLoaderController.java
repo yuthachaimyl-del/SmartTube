@@ -302,7 +302,8 @@ public class VideoLoaderController extends BasePlayerController {
             // 18+ video or the video is hidden/removed
             player.showOverlay(true);
             loadNextVideo(5_000);
-        } else if (acceptAdaptiveFormats(formatInfo) && formatInfo.containsDashFormats() && !preferSabrLive(formatInfo)) {
+        } else if (acceptAdaptiveFormats(formatInfo) && formatInfo.containsDashFormats() && !preferSabrLive(formatInfo)
+                && !(com.liskovsoft.smartyoutubetv2.common.car.CarPerf.isSabrTest() && formatInfo.containsSabrFormats())) {
             Log.d(TAG, "Loading regular video in dash format...");
             com.liskovsoft.smartyoutubetv2.common.car.CarPerf.mark("player opens dash");
 
