@@ -72,7 +72,9 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long TREND_MS = 4_000;
     private static final long STALL_REACT_MS = 2_000;       // stalled this long: restart at what the network carries
     private static final long STALL_REACT_HEAVY_MS = 700;   // (this long when a step down was already decided)
-    private static final long START_REACT_MS = 3_000;       // no picture this long after a start, though data arrives
+    private static final long START_REACT_MS = 3_000;       // no picture after this much downloading at the start
+    private static final long START_REACT_TRICKLE_MS = 6_000; // (this much when next to nothing arrives)
+    private static final long TRICKLE_BPS = 60_000;
     private static final long RESTART_AGAIN_MS = 8_000;
     private static final long START_NEEDS_MS = 1_500;       // less than this loaded: the wait is the network's
     private static final long NO_DATA_SAY_MS = 8_000;
@@ -105,6 +107,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private long mPlayedMs;
     private long mSinceStatusMs;
     private long mStartWaitMs;
+    private long mStartActiveMs;    // of that, with a download running
+    private long mStallActiveMs;    // time a download was running during the stall
     private long mLastBufferedPosMs = -1;
     private long mLastProgressMs;   // elapsedRealtime when loaded video last grew
     private long mLastUpMs;
@@ -324,6 +328,9 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
         // 1. No picture yet
         if (!mWasReady && wants && buffering) {
             mStartWaitMs += TICK_MS;
+            if (meter.isTransferring()) {
+                mStartActiveMs += TICK_MS; // (waiting for the server's answer, or for the app itself, isn't slow network)
+            }
             if (bufferedMs >= START_NEEDS_MS) {
                 return; // enough is loaded: the player is getting ready (decoder, first frame), not waiting for data
             }
@@ -333,10 +340,15 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
                 }
                 return;
             }
-            if (mStartWaitMs >= START_REACT_MS && need > fast * 0.9f && canRestart(now)) {
+            // Data has been coming in for seconds and there still isn't enough for a picture: this version is too heavy for
+            // the network. (The first second of a download says little - and a trickle may just be the server taking
+            // its time: that gets longer.)
+            long downloadTime = fast < TRICKLE_BPS ? START_REACT_TRICKLE_MS : START_REACT_MS;
+            if (mStartActiveMs >= downloadTime && need > fast * 0.9f && canRestart(now)) {
                 Format target = fit(fast, rate);
                 boolean lightSound = needsLightSound(fast, rate);
                 if (CarAutoQuality.isLighter(target, cur) || lightSound) {
+                    mStartActiveMs = 0;
                     restart(now, target != null ? target : cur, fast, lightSound, String.format(Locale.US,
                             "no picture after %d s, network %s", mStartWaitMs / 1000, mbps(fast)));
                 }
@@ -344,13 +356,18 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             return;
         }
         mStartWaitMs = 0;
+        mStartActiveMs = 0;
 
         // 2. Stalled in the middle
         if (mWasReady && wants && buffering) {
             long stalledMs = mBufferingSinceMs > 0 ? now - mBufferingSinceMs : -1;
+            if (stalledMs >= 0 && meter.isTransferring()) {
+                mStallActiveMs += TICK_MS;
+            }
             // (a heavier piece than the version selected is still coming in and playback has caught up with it: no
             // point in waiting to see how it goes)
-            if (stalledMs < (heavyInFlight ? STALL_REACT_HEAVY_MS : STALL_REACT_MS) || !canRestart(now)) {
+            if (stalledMs < (heavyInFlight ? STALL_REACT_HEAVY_MS : STALL_REACT_MS) || !canRestart(now)
+                    || mStallActiveMs < (heavyInFlight ? TICK_MS : STALL_REACT_MS)) { // (data must have been coming in that long)
                 return;
             }
             if (fast <= 0) {
@@ -372,6 +389,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             }
             return;
         }
+
+        mStallActiveMs = 0;
 
         if (!playing) {
             mUpStreak = 0;
@@ -681,6 +700,8 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             mBufferingSinceMs = -1; // a stall of the last video isn't this one's
             mLastStallMs = -1;
             mStartWaitMs = 0;
+            mStartActiveMs = 0;
+            mStallActiveMs = 0;
             mStrikes = 0;
             mPlayedMs = 0;
             mLastBufferedPosMs = -1;

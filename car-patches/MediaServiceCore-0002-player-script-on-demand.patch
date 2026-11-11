@@ -1,0 +1,123 @@
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/nsigsolver/impl/TclChallengeProvider.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/nsigsolver/impl/TclChallengeProvider.kt
+index 0387aec4..1b6112c0 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/nsigsolver/impl/TclChallengeProvider.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/nsigsolver/impl/TclChallengeProvider.kt
+@@ -43,6 +43,15 @@ internal object TclChallengeProvider {
+      * @return map from each input nParam to its decoded value, or null for one that failed
+      */
+     fun solveN(playerUrl: String, playerCode: String, nParams: List<String>): Map<String, String?> {
++        return solveN(playerUrl, { playerCode }, nParams)
++    }
++
++    /**
++     * Car build: [playerCode] is only asked for when nothing usable is cached for this player. The player script is
++     * a download of about a megabyte; fetching it on every start of the app, only to pass it along unused (the cached
++     * solver was taken anyway), delayed the first video by half a minute on a weak signal.
++     */
++    fun solveN(playerUrl: String, playerCode: () -> String?, nParams: List<String>): Map<String, String?> {
+         if (nParams.isEmpty()) {
+             return emptyMap()
+         }
+@@ -51,25 +60,41 @@ internal object TclChallengeProvider {
+         // n-function (which expects a real URL object, not a bare string) has something valid
+         // to parse. The wrapper's own shape doesn't matter beyond being a well-formed https url.
+         val challengeByParam = nParams.distinct().associateWith { "https://www.youtube.com/videoplayback?n=$it" }
++        val challenges = challengeByParam.values.toList()
+ 
+         val cacheKey = "player:$playerUrl"
+         val cachedPreprocessed = CacheService.load(cacheSection, cacheKey)?.code
+ 
+-        val request = if (cachedPreprocessed != null) {
+-            mapOf(
++        if (cachedPreprocessed != null) {
++            val results = solve(mapOf(
+                 "type" to "preprocessed",
+                 "preprocessed_player" to cachedPreprocessed,
+-                "challenges" to challengeByParam.values.toList()
+-            )
+-        } else {
+-            mapOf(
+-                "type" to "player",
+-                "player" to playerCode,
+-                "challenges" to challengeByParam.values.toList(),
+-                "output_preprocessed" to true
+-            )
++                "challenges" to challenges
++            ), cacheKey)
++
++            if (results != null && challenges.all { results[it] != null }) {
++                return nParams.associateWith { param -> results[challengeByParam[param]] }
++            }
++
++            // cached preprocessed script may be stale (e.g. player build rotated): solve from the player itself
++            Log.e(tag, "Cached TCL solver didn't solve: using the player")
++            CacheService.clear(cacheSection)
+         }
+ 
++        val code = playerCode() ?: return nParams.associateWith { null }
++
++        val results = solve(mapOf(
++            "type" to "player",
++            "player" to code,
++            "challenges" to challenges,
++            "output_preprocessed" to true
++        ), cacheKey) ?: return nParams.associateWith { null }
++
++        return nParams.associateWith { param -> results[challengeByParam[param]] }
++    }
++
++    /** @return the solved challenges; null when the solver failed */
++    private fun solve(request: Map<String, Any>, cacheKey: String): Map<String, String>? {
+         val stdin = "JSON.stringify(tclSolver(${Gson().toJson(request)}));"
+ 
+         val stdout = try {
+@@ -81,30 +106,24 @@ internal object TclChallengeProvider {
+             }
+         } catch (e: Exception) {
+             Log.e(tag, "TCL n-function solve failed: ${e.message}")
+-            return nParams.associateWith { null }
++            return null
+         }
+ 
+         val output: SolverOutput = try {
+             Gson().fromJson(stdout, solverOutputType)
+         } catch (e: JsonSyntaxException) {
+             Log.e(tag, "Cannot parse TCL solver output: ${e.message}")
+-            return nParams.associateWith { null }
++            return null
+         }
+ 
+         if (output.type == "error") {
+             Log.e(tag, "TCL solver error: ${output.error}")
+-            if (cachedPreprocessed != null) {
+-                // cached preprocessed script may be stale (e.g. player build rotated)
+-                CacheService.clear(cacheSection)
+-            }
+-            return nParams.associateWith { null }
++            return null
+         }
+ 
+         output.preprocessed_player?.let { CacheService.store(cacheSection, cacheKey, CachedData(it)) }
+ 
+-        val results = output.results ?: emptyMap()
+-
+-        return nParams.associateWith { param -> results[challengeByParam[param]] }
++        return output.results ?: emptyMap()
+     }
+ 
+     private fun runV8(stdin: String): String {
+diff --git a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
+index 9779e6ae..c0f0515f 100644
+--- a/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
++++ b/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/app/playerdata/TclPlayerDataExtractor.kt
+@@ -107,7 +107,9 @@ internal class TclPlayerDataExtractor(override val playerUrl: String): PlayerDat
+ 
+         val validNParams = nParams?.takeIf { nFuncCode }?.filterNotNull()?.takeIf { it.isNotEmpty() }?.distinct()
+ 
+-        val nResults = validNParams?.let { params -> playerCode?.let { TclChallengeProvider.solveN(fixedPlayerUrl, it, params) } }
++        // Car build: the player script is only downloaded when the solver has nothing cached for this player
++        // (it used to be fetched on every start of the app and then not used)
++        val nResults = validNParams?.let { params -> TclChallengeProvider.solveN(fixedPlayerUrl, { playerCode }, params) }
+         val nProcessed = nResults?.let { results -> nParams?.map { results[it] } }
+         // TCL works only in TV version, so sig isn't necessary in this client
+         return Pair(nProcessed, null)
