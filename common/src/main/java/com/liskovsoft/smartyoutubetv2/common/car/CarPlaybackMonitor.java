@@ -26,21 +26,29 @@ import java.util.Locale;
 /**
  * Car build: watches a playing video once a second and keeps auto picture where it plays smoothly.
  * <p>
- * The network (the speed is measured while the pieces of video come in, see {@link LiveBandwidthMeter}):
+ * The network. Its speed is measured while the pieces of video come in ({@link LiveBandwidthMeter}: over the last few
+ * seconds of downloading, and over a longer stretch), and compared with what the version needs (picture and sound).
  * <ul>
- * <li>It no longer carries the version that is playing and the loaded video is running out: down, straight to the
- * version that fits the measured speed, from the next piece of video on. What is already loaded keeps playing, so
- * nothing stops; a piece of the old version that is still coming in too slowly is given up.</li>
- * <li>It carries a clearly better version and enough is loaded: up, within seconds - the pieces loaded beyond the next
- * few seconds are fetched again in the better version. An up that had to be taken back makes the next one wait longer.</li>
- * <li>Playback has already stalled (or doesn't start): the video stream is restarted right away at the version that
- * fits - and with the light sound version when even the lightest picture doesn't fit. When nothing arrives at all
- * (a tunnel) nothing is changed: going lower doesn't help there.</li>
+ * <li>Down, in time: the network no longer carries what is coming in and what's loaded ahead is shrinking - with less
+ * than {@link #DOWN_BUFFER_MS} left, or after {@link #SLOW_FOR_LONG_MS} of it however much is left (what's loaded is
+ * better kept for a tunnel than spent on pieces that arrive slower than they play). Straight to the version that fits
+ * the measured speed, from the next piece on: what is loaded keeps playing, nothing stops. The piece of the old
+ * version that is still coming in is given up when its rest would take longer than playback can wait
+ * ({@link #abandonBudgetUs}, {@code ChunkAbandonPolicy}).</li>
+ * <li>Up, soon: the network carries a clearly better version ({@link #UP_SHARE} of the smaller of both speeds) for a
+ * few seconds in a row. The pieces loaded beyond the next seconds are fetched again in the better version, so it
+ * shows within seconds. Careful where it matters: one step only while the speed is known from a few short bursts; the
+ * next step waits for the last one to get on screen while the measurement is still climbing; a step that had to be
+ * taken back makes the next one wait longer.</li>
+ * <li>Stalled, or no picture at a start although data has been coming in for seconds: the video stream is restarted
+ * right away at the version that fits - with the light sound version when even the lightest picture doesn't fit.
+ * When nothing arrives at all (a tunnel) nothing is changed: going lower doesn't help there.</li>
  * </ul>
  * The decoder: dropped frames mean it can't keep up with this resolution/frame rate. A lighter version takes over and
  * the level is remembered as too heavy, so next videos start lighter.
  * <p>
  * The first seconds after a start, a seek, a quality change or a change of the video's size on screen don't count.
+ * Every decision is logged (logcat tag CarPerf); {@code adb shell setprop log.tag.CarNet DEBUG} adds a line a second.
  */
 public final class CarPlaybackMonitor implements Player.EventListener, VideoListener {
     private static final long TICK_MS = 1_000;
