@@ -93,6 +93,7 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
     private static final long SOUND_BACK_MIN_BPS = 1_500_000;
     private static final long SOUND_BACK_MIN_BUFFER_MS = 15_000;
     private static final long SOUND_CHANGE_AGAIN_MS = 30_000;
+    private static final long SOUND_BACK_KEEP_MS = 15_000;  // the full sound is loaded again from this far ahead
     /** A line a second about the network and the buffer: adb shell setprop log.tag.CarNet DEBUG (then start the app). */
     private static final String TRACE_TAG = "CarNet";
     private static final boolean TRACE = Log.isLoggable(TRACE_TAG, Log.DEBUG);
@@ -434,6 +435,12 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             // With a comfortable amount loaded a short dip counts half; with little, only what the network does right now
             long estimate = bufferedMs >= COMFORT_BUFFER_MS && slow > fast ? (fast + slow) / 2 : fast;
             Format target = fit(estimate, rate);
+            // Even the lightest picture doesn't fit next to the full sound: the light sound version, from the next piece
+            // of sound on (no stop). Where the sound can't change in mid-stream it waits for the last resort below.
+            if (needsLightSound(estimate, rate) && CarAutoQuality.switchSound(true, CarTrackSelection.KEEP_ALL)) {
+                mLastSoundChangeMs = now;
+                CarPerf.log(String.format(Locale.US, "network %s: the light sound version from the next piece on", mbps(estimate)));
+            }
             if (CarAutoQuality.isLighter(target, cur)) {
                 if (!live && CarAutoQuality.switchTo(target, CarTrackSelection.KEEP_ALL)) {
                     long budgetUs = abandonBudgetUs(bufferedMs, fast, need);
@@ -527,7 +534,11 @@ public final class CarPlaybackMonitor implements Player.EventListener, VideoList
             } else if (now - mGoodSoundSinceMs >= SOUND_BACK_AFTER_MS) {
                 mGoodSoundSinceMs = 0;
                 RestoreTrackSelector selector = mSelector.get();
-                if (selector != null) {
+                if (CarAutoQuality.switchSound(false, SOUND_BACK_KEEP_MS * 1_000)) {
+                    CarPerf.log(String.format(Locale.US, "network %s for a while: the full sound version again, from the next piece on",
+                            mbps(safe)));
+                    mLastSoundChangeMs = now;
+                } else if (selector != null) {
                     CarPerf.log(String.format(Locale.US, "network %s for a while: the full sound version again", mbps(safe)));
                     mLastSoundChangeMs = now;
                     CarAutoQuality.restoreFullSound();

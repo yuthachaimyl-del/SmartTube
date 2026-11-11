@@ -228,9 +228,11 @@ public class RestoreTrackSelector extends DefaultTrackSelector {
             }
             if (auto != null) {
                 if (mCallback != null) {
-                    mCallback.updateAudioTrackSelection(groups, params, auto);
+                    // (the pick can carry a second version for a change in mid-stream: the UI gets the one playing)
+                    mCallback.updateAudioTrackSelection(groups, params,
+                            com.liskovsoft.smartyoutubetv2.common.car.CarAutoQuality.single(auto));
                 }
-                int index = auto.tracks[0];
+                int index = auto.tracks[0]; // (the picked version comes first)
                 return new Pair<>(auto, new AudioTrackScore(auto.group.getFormat(index), params, formatSupports[groups.indexOf(auto.group)][index]));
             }
         }

@@ -71,6 +71,10 @@ public final class CarAutoQuality {
     private static boolean sRestartLightSound;
     /** The selection playing now, for a change of version in the middle of the stream. */
     private static volatile WeakReference<CarTrackSelection> sLive = new WeakReference<>(null);
+    /** The same for the sound, when a second version (full / light) rides along; and those two versions. */
+    private static volatile WeakReference<CarTrackSelection> sLiveAudio = new WeakReference<>(null);
+    @Nullable private static volatile Format sFullAudio;
+    @Nullable private static volatile Format sLightAudio;
 
     private CarAutoQuality() {
     }
@@ -246,7 +250,12 @@ public final class CarAutoQuality {
     }
 
     static void onSelectionCreated(CarTrackSelection selection) {
-        sLive = new WeakReference<>(selection);
+        Format f = selection.getFormat(0);
+        if (MimeTypes.isAudio(f.sampleMimeType) || MimeTypes.isAudio(f.containerMimeType)) {
+            sLiveAudio = new WeakReference<>(selection);
+        } else {
+            sLive = new WeakReference<>(selection);
+        }
     }
 
     // ---------------------------------------- following the network (for CarPlaybackMonitor) ----------------------------------------
@@ -467,6 +476,7 @@ public final class CarAutoQuality {
         sRestartEstimate = -1;
         sRestartLightSound = false;
         sLive = new WeakReference<>(null);
+        sLiveAudio = new WeakReference<>(null);
     }
 
     /** Auto picked again by the user: start over (try the best levels again). */
@@ -546,20 +556,67 @@ public final class CarAutoQuality {
         final boolean weak = sWeakFromVideo ? sWeak : live >= 0 && live * SHARE_LIVE < WEAK_BUDGET;
         sWeakFromVideo = false;
         List<int[]> light = filter(c, groups, f -> f.bitrate > 0 && f.bitrate <= LIGHT_AUDIO_BPS);
-        if (weak && !light.isEmpty()) { // weak signal: a light version (~50-70 kbps sounds fine in a moving car), the
-            c = light;                  // picture needs the bandwidth
+        int[] fullGt = bestSound(c, groups);
+        int[] lightGt = light.isEmpty() ? null : bestSound(light, groups);
+        // weak signal: a light version (~50-70 kbps sounds fine in a moving car), the picture needs the bandwidth
+        best = weak && lightGt != null ? lightGt : fullGt;
+
+        Format f = format(groups, best);
+        // The other version (full <-> light) comes along in the selection when the sound can change to it in the
+        // middle of the stream - same group, codec, sample rate and channels: then a change of sound never stops the
+        // video (rebuilding the sound stream does, for seconds on a weak signal)
+        int[] other = best == fullGt ? lightGt : fullGt;
+        if (other != null && (other[0] != best[0] || other[1] == best[1] || !sameSound(f, format(groups, other)))) {
+            other = null;
         }
-        for (int[] gt : c) {
+        sAudio = f;
+        sLighterAudio = lightGt != null && f.bitrate > LIGHT_AUDIO_BPS;
+        sFullAudio = other != null ? format(groups, fullGt) : null;
+        sLightAudio = other != null ? format(groups, lightGt) : null;
+        CarPerf.log("auto sound: " + describeAudio(f) + (weak ? " (weak signal)" : "") + " (" + all.size() + " versions"
+                + (other != null ? ", " + describeAudio(format(groups, other)) + " on standby" : "") + ")");
+        if (other == null) {
+            return new Definition(groups.get(best[0]), best[1]);
+        }
+        return new Definition(groups.get(best[0]), new int[] {best[1], other[1]}, C.SELECTION_REASON_INITIAL,
+                new CarTrackSelection.Pick(f, 0)); // (the sound stream is never rebuilt on purpose: one generation)
+    }
+
+    @Nullable
+    private static int[] bestSound(List<int[]> list, TrackGroupArray groups) {
+        int[] best = null;
+        for (int[] gt : list) {
             if (best == null || audioScore(format(groups, gt)) > audioScore(format(groups, best))) {
                 best = gt;
             }
         }
+        return best;
+    }
 
-        Format f = format(groups, best);
-        sAudio = f;
-        sLighterAudio = !light.isEmpty() && f.bitrate > LIGHT_AUDIO_BPS;
-        CarPerf.log("auto sound: " + describeAudio(f) + (weak ? " (weak signal)" : "") + " (" + all.size() + " versions)");
-        return new Definition(groups.get(best[0]), best[1]);
+    /** Two versions of the sound a decoder plays one after the other without being set up anew. */
+    private static boolean sameSound(Format a, Format b) {
+        return a.sampleMimeType != null && a.sampleMimeType.equals(b.sampleMimeType)
+                && a.sampleRate > 0 && a.sampleRate == b.sampleRate && a.channelCount == b.channelCount;
+    }
+
+    /**
+     * Change to the light (or back to the full) sound version in the middle of the stream: from the next piece of sound
+     * on, playback doesn't stop. False when the sound playing has no such second version (re-select then, see
+     * {@link #useLightSound} / {@link #restoreFullSound}).
+     *
+     * @param keepUs How much loaded sound of the other version stays ahead of playback ({@link CarTrackSelection#KEEP_ALL}:
+     *     all of it); the rest is loaded again in the new version.
+     */
+    public static synchronized boolean switchSound(boolean light, long keepUs) {
+        CarTrackSelection live = sLiveAudio.get();
+        Format target = light ? sLightAudio : sFullAudio;
+        if (live == null || target == null || !live.select(target, keepUs)) {
+            return false;
+        }
+        sAudio = target;
+        sWeak = light;
+        sLighterAudio = !light;
+        return true;
     }
 
     private static final int LIGHT_AUDIO_BPS = 80_000;
