@@ -195,11 +195,11 @@ public final class SabrExtractorInput implements ExtractorInput {
                     // Server backoff is too long: reload the format rather than wait.
                     throwBackoffRequested(backoffMs);
                 } else if (backoffMs > 0) {
-                    Thread.sleep(backoffMs);
+                    waitQuietly(backoffMs);
                 } else if (!receivedData && sabrStream.isLive()) {
                     // Live head: the server has nothing new yet. It's not the end of the stream.
                     // Wait a bit, otherwise the empty responses are requested in a tight loop.
-                    Thread.sleep(LIVE_EMPTY_RESPONSE_WAIT_MS);
+                    waitQuietly(LIVE_EMPTY_RESPONSE_WAIT_MS);
                 }
 
                 break;
@@ -225,6 +225,18 @@ public final class SabrExtractorInput implements ExtractorInput {
             if (sabrPart instanceof RefreshPlayerResponseSabrPart) {
                 throwPlayerResponseReloadRequested((RefreshPlayerResponseSabrPart) sabrPart);
             }
+        }
+    }
+
+    /** Car build: waiting because the server said so isn't a slow network - the speed meter doesn't count it. */
+    private static void waitQuietly(long ms) throws InterruptedException {
+        com.google.android.exoplayer2.upstream.LiveBandwidthMeter meter =
+                com.google.android.exoplayer2.upstream.LiveBandwidthMeter.getInstance();
+        meter.pause();
+        try {
+            Thread.sleep(ms);
+        } finally {
+            meter.resume();
         }
     }
 

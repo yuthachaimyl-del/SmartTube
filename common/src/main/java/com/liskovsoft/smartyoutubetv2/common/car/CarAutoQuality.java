@@ -201,7 +201,7 @@ public final class CarAutoQuality {
      */
     private static boolean switchTo(Format f) {
         CarTrackSelection live = sLive.get();
-        if (live == null || !live.select(f)) {
+        if (live == null || !live.select(f, 10_000_000L, false)) {
             return false;
         }
         sVideo = f;

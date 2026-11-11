@@ -30,6 +30,7 @@ import com.google.android.exoplayer2.source.sabr.protos.videostreaming.FormatIni
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.LiveMetadata;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.MediaHeader;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.NextRequestPolicy;
+import com.google.android.exoplayer2.source.sabr.protos.videostreaming.PlaybackCookie;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.SabrContextSendingPolicy;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.SabrContextUpdate;
 import com.google.android.exoplayer2.source.sabr.protos.videostreaming.SabrSeek;
@@ -748,12 +749,29 @@ public class SabrProcessor {
     //    return result;
     //}
 
+    /**
+     * Car build: the server's cookie, unless it names another format than the one this stream asks for now (see
+     * {@link #setFormatSelector}; a response that was still coming in during the change can bring the old one back).
+     */
+    private ByteString playbackCookieToSend() {
+        NextRequestPolicy policy = nextRequestPolicy;
+        if (policy == null || !policy.hasPlaybackCookie()) {
+            return ByteString.EMPTY;
+        }
+        PlaybackCookie cookie = policy.getPlaybackCookie();
+        FormatId selected = formatSelector != null ? formatSelector.getSelectedFormatId() : null;
+        if (selected != null && cookie.hasVideoFmt() != cookie.hasAudioFmt()) { // (this stream's own cookie: one track type)
+            FormatId named = cookie.hasVideoFmt() ? cookie.getVideoFmt() : cookie.getAudioFmt();
+            if (named.getItag() != selected.getItag()) {
+                return ByteString.EMPTY;
+            }
+        }
+        return cookie.toByteString();
+    }
+
     public StreamerContext createStreamerContext() {
         StreamerContext.Builder builder = StreamerContext.newBuilder()
-                .setPlaybackCookie(
-                        nextRequestPolicy != null ?
-                                nextRequestPolicy.getPlaybackCookie().toByteString() : ByteString.EMPTY
-                )
+                .setPlaybackCookie(playbackCookieToSend())
                 .setClientInfo(clientInfo)
                 .addAllSabrContexts(createSabrContexts())
                 .addAllUnsentSabrContexts(createUnsentSabrContexts());
@@ -822,8 +840,19 @@ public class SabrProcessor {
             return;
         }
         // Car build: a quality change in the middle of the stream. The format played so far is retired: its media is
-        // thrown away if the server still sends some, and the requests tell the server it's fully buffered. A format
-        // that was retired earlier and is picked again comes back to life (its init data is already known).
+        // thrown away if the server still sends some. A format that was retired earlier and is picked again comes back
+        // to life (its init data is already known).
+        FormatId oldId = old.getSelectedFormatId();
+        FormatId newId = this.formatSelector.getSelectedFormatId();
+        if (oldId == null || newId == null || oldId.getItag() != newId.getItag()) {
+            // The server's "playback cookie" still names the old format as the one it streams. Sent back with a request
+            // for a lower format, the server kept answering "back off 2 s" with no media at all (it only sent the new
+            // format's init segment), so every step down hung until the whole video was reloaded. Without the cookie
+            // the request is like the first one of a playback: the server sends what is asked for, from the asked time.
+            nextRequestPolicy = null;
+            Log.d(TAG, "Format changed (%s -> %s): playback cookie dropped",
+                    oldId != null ? oldId.getItag() : -1, newId != null ? newId.getItag() : -1);
+        }
         for (SelectedFormat selectedFormat : selectedFormats.values()) {
             if (selectedFormat.formatSelector == old && !selectedFormat.discard) {
                 selectedFormat.discard = true;
@@ -844,7 +873,7 @@ public class SabrProcessor {
         }
     }
 
-    /** Car build: formats switched away from in this stream (the server is told they're fully buffered). */
+    /** Car build: formats switched away from in this stream (their media is thrown away if any still comes). */
     public @NonNull List<FormatId> getRetiredFormatIds() {
         return retiredFormatIds;
     }

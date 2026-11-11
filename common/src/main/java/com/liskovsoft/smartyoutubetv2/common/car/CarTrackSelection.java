@@ -22,9 +22,10 @@ import java.util.List;
  * video is stalled bumps the generation on purpose, so the stream is rebuilt right away (the slow download is
  * dropped) instead of waiting for the next piece.
  * <p>
- * A change doesn't wait for the loaded data to play out either (up to a minute is loaded ahead): the pieces of the
- * old version beyond the next {@link #KEEP_US} are dropped and loaded again in the new one, so the better picture
- * shows within seconds - still without a stop, as the next seconds are already there.
+ * A step up doesn't wait for the loaded data to play out either (up to a minute is loaded ahead): the pieces of the
+ * old version beyond the next few seconds are dropped and loaded again in the new one, so the better picture shows
+ * within seconds - still without a stop, as the next seconds are already there. A step down for the network keeps
+ * everything that is loaded and can give up the piece that is still coming in (see {@link #select}).
  */
 public final class CarTrackSelection extends BaseTrackSelection implements PinnedTrackSelection {
     /** {@link TrackSelection.Definition#data} that asks the factory for this kind of selection. */
@@ -70,11 +71,16 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
         }
     }
 
-    private static final long KEEP_US = 10_000_000; // enough to fetch the first piece of the new version meanwhile
+    /** Keep everything that is loaded (a step down for the network: what's loaded plays fine, it's what bridges the gap). */
+    static final long KEEP_ALL = Long.MAX_VALUE;
     private final int mGeneration;
     private volatile int mPending;
     private volatile int mSelected;
     private volatile int mReason = C.SELECTION_REASON_INITIAL;
+    /** How much loaded video of other versions stays ahead of playback; the rest is loaded again in the new version. */
+    private volatile long mKeepUs = KEEP_ALL;
+    /** A piece of another version that is still loading is given up (asked once, see {@link #shouldAbandon}). */
+    private volatile boolean mAbandon;
 
     private CarTrackSelection(TrackGroup group, int[] tracks, Pick pick) {
         super(group, tracks);
@@ -84,15 +90,39 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
         mPending = mSelected;
     }
 
-    /** Play this version from the next piece of video on. False when it isn't in this selection. */
-    boolean select(Format format) {
+    /**
+     * Play this version from the next piece of video on. False when it isn't in this selection.
+     *
+     * @param keepUs How much already loaded video of other versions to keep ahead of playback ({@link #KEEP_ALL}: all
+     *     of it); what lies beyond is dropped and loaded again in this version, so the change shows sooner.
+     * @param abandonLoading Give up a piece of another version that is loading right now (it comes in too slowly to
+     *     wait for), as long as the player isn't playing from it yet.
+     */
+    boolean select(Format format, long keepUs, boolean abandonLoading) {
         int index = indexOfFormat(format);
         if (index < 0) {
             return false;
         }
+        mKeepUs = keepUs;
         mPending = index;
+        mAbandon = abandonLoading;
         mReason = C.SELECTION_REASON_ADAPTIVE;
         return true;
+    }
+
+    /** Whether this version is one of the tracks that can be switched to. */
+    boolean has(Format format) {
+        return indexOfFormat(format) >= 0;
+    }
+
+    @Override
+    public boolean shouldAbandon(Format loadingFormat) {
+        if (!mAbandon) {
+            return false;
+        }
+        mAbandon = false; // asked once: for the piece that was loading when the step was decided
+        Format wanted = getFormat(mPending);
+        return loadingFormat != null && loadingFormat != wanted && !loadingFormat.equals(wanted);
     }
 
     /** The version playing (or about to). */
@@ -124,8 +154,12 @@ public final class CarTrackSelection extends BaseTrackSelection implements Pinne
 
     @Override
     public int evaluateQueueSize(long playbackPositionUs, List<? extends MediaChunk> queue) {
+        long keepUs = mKeepUs;
+        if (keepUs == KEEP_ALL) {
+            return queue.size();
+        }
         Format wanted = getFormat(mPending);
-        long keepUntilUs = playbackPositionUs + KEEP_US;
+        long keepUntilUs = playbackPositionUs + keepUs;
         for (int i = 0; i < queue.size(); i++) {
             MediaChunk chunk = queue.get(i);
             if (chunk.trackFormat != wanted && chunk.startTimeUs != C.TIME_UNSET && chunk.startTimeUs > keepUntilUs) {

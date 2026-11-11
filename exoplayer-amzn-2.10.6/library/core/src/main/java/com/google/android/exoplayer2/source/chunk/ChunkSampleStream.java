@@ -80,6 +80,11 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
   private long pendingResetPositionUs;
   private long lastSeekPositionUs;
   private int nextNotifyPrimaryFormatMediaChunkIndex;
+  /** Car build: the chunk the loader is on, and whether it was cancelled to switch quality (see reevaluateBuffer) */
+  private @Nullable Chunk loadingChunk;
+  private boolean canceledForSwitch;
+  /** The renderer must still be this many samples away from a chunk for it to be given up safely. */
+  private static final int CANCEL_MIN_SAMPLES_AHEAD = 48;
 
   /* package */ long decodeOnlyUntilPositionUs;
   /* package */ boolean loadingFinished;
@@ -435,6 +440,8 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
 
   @Override
   public void onLoadCompleted(Chunk loadable, long elapsedRealtimeMs, long loadDurationMs) {
+    loadingChunk = null;
+    canceledForSwitch = false;
     chunkSource.onChunkLoadCompleted(loadable);
     eventDispatcher.loadCompleted(
         loadable.dataSpec,
@@ -470,10 +477,40 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
         elapsedRealtimeMs,
         loadDurationMs,
         loadable.bytesLoaded());
+    boolean forSwitch = canceledForSwitch;
+    canceledForSwitch = false;
+    loadingChunk = null;
     if (!released) {
-      primarySampleQueue.reset();
-      for (SampleQueue embeddedSampleQueue : embeddedSampleQueues) {
-        embeddedSampleQueue.reset();
+      int lastChunkIndex = mediaChunks.size() - 1;
+      if (forSwitch && !isPendingReset() && lastChunkIndex >= 0 && mediaChunks.get(lastChunkIndex) == loadable
+          && !haveReadFromMediaChunk(lastChunkIndex)) {
+        // Car build: given up to switch quality - only this chunk goes, everything loaded before it stays
+        discardUpstreamMediaChunksFromIndex(lastChunkIndex);
+        if (mediaChunks.isEmpty()) {
+          pendingResetPositionUs = lastSeekPositionUs;
+        }
+        loadingFinished = false;
+        if (chunkSource instanceof CancellableChunkSource) {
+          ((CancellableChunkSource) chunkSource).onChunkLoadCanceled(loadable);
+        }
+      } else if (forSwitch && !isPendingReset()) {
+        // The renderer got into the chunk in the meantime (it shouldn't, see CANCEL_MIN_SAMPLES_AHEAD): what was read
+        // can't be taken back, so load again from where playback is, like after a seek
+        Log.w(TAG, "Cancelled chunk was already being read: reloading from the playback position");
+        pendingResetPositionUs = Math.max(lastSeekPositionUs, lastReevaluatePositionUs);
+        lastSeekPositionUs = pendingResetPositionUs;
+        loadingFinished = false;
+        mediaChunks.clear();
+        nextNotifyPrimaryFormatMediaChunkIndex = 0;
+        primarySampleQueue.reset();
+        for (SampleQueue embeddedSampleQueue : embeddedSampleQueues) {
+          embeddedSampleQueue.reset();
+        }
+      } else {
+        primarySampleQueue.reset();
+        for (SampleQueue embeddedSampleQueue : embeddedSampleQueues) {
+          embeddedSampleQueue.reset();
+        }
       }
       callback.onContinueLoadingRequested(this);
     }
@@ -524,6 +561,10 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
     }
 
     boolean canceled = !loadErrorAction.isRetry();
+    if (canceled) {
+      loadingChunk = null;
+      canceledForSwitch = false;
+    }
     eventDispatcher.loadError(
         loadable.dataSpec,
         loadable.getUri(),
@@ -590,6 +631,8 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
       mediaChunk.init(mediaChunkOutput);
       mediaChunks.add(mediaChunk);
     }
+    loadingChunk = loadable;
+    canceledForSwitch = false;
     long elapsedRealtimeMs =
         loader.startLoading(
             loadable, this, loadErrorHandlingPolicy.getMinimumLoadableRetryCount(loadable.type));
@@ -617,6 +660,11 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
 
   @Override
   public void reevaluateBuffer(long positionUs) {
+    lastReevaluatePositionUs = positionUs;
+    if (loader.isLoading() && !loader.hasFatalError() && !isPendingReset()) {
+      maybeCancelLoad(positionUs);
+      return;
+    }
     if (loader.isLoading() || loader.hasFatalError() || isPendingReset()) {
       return;
     }
@@ -648,6 +696,41 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
   }
 
   // Internal methods
+
+  private long lastReevaluatePositionUs;
+
+  /**
+   * Car build: gives up the media chunk that is loading when the chunk source says so (auto picture went lower and
+   * this piece, in the old quality, is coming in too slowly) - as long as the renderer is still well before it.
+   */
+  private void maybeCancelLoad(long positionUs) {
+    if (canceledForSwitch || !(chunkSource instanceof CancellableChunkSource) || mediaChunks.isEmpty()
+        || !(loadingChunk instanceof BaseMediaChunk)) {
+      return;
+    }
+    int lastChunkIndex = mediaChunks.size() - 1;
+    BaseMediaChunk last = mediaChunks.get(lastChunkIndex);
+    if (last != loadingChunk || last.isLoadCompleted()) {
+      return;
+    }
+    if (lastChunkIndex > 0) {
+      // Something is loaded before this chunk: only give it up while the renderer is still well before it - what it
+      // has read can't be taken back, and everything loaded would have to go with it. (When it's the only chunk -
+      // right after a start or a seek - nothing is lost either way: loading starts over from the same position.)
+      if (primarySampleQueue.getReadIndex() + CANCEL_MIN_SAMPLES_AHEAD > last.getFirstSampleIndex(0)) {
+        return;
+      }
+      for (int i = 0; i < embeddedSampleQueues.length; i++) {
+        if (embeddedSampleQueues[i].getReadIndex() > last.getFirstSampleIndex(i + 1)) {
+          return;
+        }
+      }
+    }
+    if (((CancellableChunkSource) chunkSource).shouldCancelLoad(positionUs, last, readOnlyMediaChunks)) {
+      canceledForSwitch = true;
+      loader.cancelLoading();
+    }
+  }
 
   private boolean isMediaChunk(Chunk chunk) {
     return chunk instanceof BaseMediaChunk;

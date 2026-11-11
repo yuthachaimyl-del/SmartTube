@@ -54,8 +54,9 @@ public class ExoPlayerInitializer {
         // HDR fix?
         //trackSelector.setParameters(trackSelector.buildUponParameters().setTunnelingAudioSessionId(C.generateAudioSessionIdV21(context)));
 
-        // Old initializer
-        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, loadControl);
+        // Car build: the speed meter that is current during a download (see LiveBandwidthMeter), for auto picture
+        SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(context, renderersFactory, trackSelector, loadControl,
+                null, com.google.android.exoplayer2.upstream.LiveBandwidthMeter.getInstance());
 
         // New initializer
         //SimpleExoPlayer player = ExoPlayerFactory.newSimpleInstance(
