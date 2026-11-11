@@ -252,8 +252,9 @@ public class DefaultDashChunkSource implements DashChunkSource, CancellableChunk
   // next getNextChunk asks for the same segment again (the one after the queue's last chunk) in the new version.
 
   @Override
-  public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue) {
-    if (fatalError != null || manifest.dynamic || !(trackSelection instanceof PinnedTrackSelection)) {
+  public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue,
+      long loadedUntilUs) {
+    if (fatalError != null || !(trackSelection instanceof PinnedTrackSelection)) {
       return false;
     }
     PinnedTrackSelection pinned = (PinnedTrackSelection) trackSelection;
@@ -263,7 +264,9 @@ public class DefaultDashChunkSource implements DashChunkSource, CancellableChunk
     }
     long loaded = loadingChunk.bytesLoaded();
     long length = loadingChunk.dataSpec.length;
-    long left = length != C.LENGTH_UNSET ? Math.max(0, length - loaded) : -1;
+    // (A live segment's size isn't known beforehand: go by how much of its media has come in.)
+    long left = length != C.LENGTH_UNSET ? Math.max(0, length - loaded)
+        : ChunkAbandonPolicy.remainingByProgress(loadingChunk, loaded, loadedUntilUs);
     long durationUs = loadingChunk.startTimeUs != C.TIME_UNSET && loadingChunk.endTimeUs != C.TIME_UNSET
         ? loadingChunk.endTimeUs - loadingChunk.startTimeUs : C.TIME_UNSET;
     boolean cancel = ChunkAbandonPolicy.shouldAbandon(left, loadingChunk.trackFormat, loaded, budgetUs,

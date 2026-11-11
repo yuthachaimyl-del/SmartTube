@@ -318,7 +318,8 @@ public class DefaultSabrChunkSource implements SabrChunkSource, CancellableChunk
     // CancellableChunkSource: auto picture went lower and the piece that is loading, in the old version, comes in too slowly
 
     @Override
-    public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue) {
+    public boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue,
+                                    long loadedUntilUs) {
         if (fatalError != null || manifest.dynamic || sabrStream == null || !(trackSelection instanceof PinnedTrackSelection)) {
             return false;
         }

@@ -13,8 +13,10 @@ public interface CancellableChunkSource {
     /**
      * Whether the load of {@code loadingChunk} should be given up. Only asked for a media chunk no sample has been
      * read from yet.
+     *
+     * @param loadedUntilUs The time up to which the chunk's media has come in so far (the largest sample time).
      */
-    boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue);
+    boolean shouldCancelLoad(long playbackPositionUs, Chunk loadingChunk, List<? extends MediaChunk> queue, long loadedUntilUs);
 
     /** {@code chunk} was cancelled on request and everything it delivered was removed from the queue. */
     void onChunkLoadCanceled(Chunk chunk);

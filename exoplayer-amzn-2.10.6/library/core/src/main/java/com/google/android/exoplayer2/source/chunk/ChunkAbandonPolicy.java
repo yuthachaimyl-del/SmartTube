@@ -22,6 +22,27 @@ public final class ChunkAbandonPolicy {
     }
 
     /**
+     * How many bytes of a chunk are still to come when its size isn't known (a live segment): by the share of its
+     * media that has come in so far. -1 when that can't be told yet.
+     *
+     * @param loadedUntilUs The largest sample time loaded so far.
+     */
+    public static long remainingByProgress(Chunk chunk, long bytesLoaded, long loadedUntilUs) {
+        if (chunk.startTimeUs == C.TIME_UNSET || chunk.endTimeUs == C.TIME_UNSET || chunk.endTimeUs <= chunk.startTimeUs
+                || loadedUntilUs == C.TIME_UNSET || loadedUntilUs == Long.MIN_VALUE || bytesLoaded <= 0) {
+            return -1;
+        }
+        double share = (loadedUntilUs - chunk.startTimeUs) / (double) (chunk.endTimeUs - chunk.startTimeUs);
+        if (share < 0.05) {
+            return -1; // too early to tell
+        }
+        if (share >= 1) {
+            return 0;
+        }
+        return (long) (bytesLoaded * (1 - share) / share);
+    }
+
+    /**
      * @param remainingBytes What is left of the chunk; -1 when unknown.
      * @param loading The format of the chunk that is loading.
      * @param bytesLoaded What has come in of it so far.

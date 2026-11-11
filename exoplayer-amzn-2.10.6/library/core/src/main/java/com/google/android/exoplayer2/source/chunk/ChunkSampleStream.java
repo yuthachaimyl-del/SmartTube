@@ -736,7 +736,8 @@ public class ChunkSampleStream<T extends ChunkSource> implements SampleStream, S
       // delivered plays on; should it run dry, the app restarts the stream at the lighter quality.
       return;
     }
-    if (((CancellableChunkSource) chunkSource).shouldCancelLoad(positionUs, last, readOnlyMediaChunks)) {
+    if (((CancellableChunkSource) chunkSource).shouldCancelLoad(positionUs, last, readOnlyMediaChunks,
+        primarySampleQueue.getLargestQueuedTimestampUs())) {
       canceledForSwitch = true;
       loader.cancelLoading();
     }
