@@ -84,6 +84,7 @@ public class SabrProcessor {
     private volatile long loadingLength = NO_VALUE;
     private volatile long loadingReceived;
     private volatile long loadingDurationMs;
+    private boolean timeRangeHeadersLogged;
 
     public SabrProcessor(
             @NonNull String videoPlaybackUstreamerConfig,
@@ -350,6 +351,19 @@ public class SabrProcessor {
                 mediaHeader = mediaHeader.toBuilder()
                         .setStartMs(segment.startMs)
                         .setDurationMs(toNextSegmentMs)
+                        .build();
+            } else if (!mediaHeader.hasStartMs() || !mediaHeader.hasDurationMs()) {
+                // Car build: some sessions get the times of a regular video's segments only as a time range too (seen
+                // when YouTube offered SABR next to DASH). Without start and duration here the next request asked for
+                // time 0 again and again - the start of the video was loaded over and over, nothing ever played on.
+                if (!timeRangeHeadersLogged) {
+                    timeRangeHeadersLogged = true;
+                    Log.e(TAG, "Media headers without start/duration: times taken from the time range (start=%s, duration=%s)",
+                            segment.startMs, segment.durationMs);
+                }
+                mediaHeader = mediaHeader.toBuilder()
+                        .setStartMs(segment.startMs)
+                        .setDurationMs(segment.durationMs)
                         .build();
             }
 
